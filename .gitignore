@@ -1,0 +1,19 @@
+# IntelliJ / IDE
+.idea/
+*.iml
+
+# Maven / Java
+target/
+*.log
+
+# Node/Vite (später fürs Frontend)
+frontend/node_modules/
+frontend/dist/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env/Secrets
+**/.env
+**/.env.*
