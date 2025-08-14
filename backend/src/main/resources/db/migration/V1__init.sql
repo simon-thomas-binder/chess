@@ -1,7 +1,8 @@
 create table app_user (
-                          id bigserial primary key,
-                          username varchar(64) unique not null,
+                          username varchar(255) primary key,
+                          displayname varchar(64) not null,
                           password_hash varchar(255) not null,
+                          salt varchar(255) not null,
                           rating int not null default 1200,
                           created_at timestamp not null default now()
 );
