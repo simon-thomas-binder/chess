@@ -26,6 +26,7 @@ body {
 /* Karten/Paneele */
 .card--glass {
   background: var(--panel);
+  -webkit-backdrop-filter: blur(8px);
   backdrop-filter: blur(8px);
   border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: 14px;
@@ -70,4 +71,27 @@ body {
 /* Fehler-Text etwas dezenter */
 .invalid-feedback {
   color: #ff9aa2;
+}
+
+/* native Reveal/Clear-Buttons in alten Edge/IE ausblenden */
+input[type="password"]::-ms-reveal,
+input[type="password"]::-ms-clear {
+  display: none;
+}
+
+/* dezente Button-Optik für das Augen-Icon */
+.input-lock-btn {
+  border: 1px solid rgba(255,255,255,0.08);
+  background: #262a31;
+  color: var(--text);
+}
+
+.input-lock-btn:hover {
+  filter: brightness(1.05);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+  background: #2c3037;
+}
+
+.form-control {
+
 }

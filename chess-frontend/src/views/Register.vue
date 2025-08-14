@@ -46,38 +46,68 @@
 
             <div class="col-12">
               <label class="form-label">Passwort</label>
-              <input
-                  v-model="password"
-                  @blur="touched.password = true"
-                  :class="['form-control', invalid.password && 'is-invalid']"
-                  type="password"
-                  placeholder="Mind. 8 Zeichen, Buchstaben & Zahl"
-                  required
-                  minlength="8"
-                  maxlength="24"
-                  autocomplete="new-password"
-              />
-              <div class="invalid-feedback" v-if="invalid.password">
-                - mindestens 8 bis max. 24 Zeichen <br>
-                - mindestens eine Zahl (0-9) <br>
-                - mindestens einen Buchstaben (a-z, A-Z)
+
+              <div class="input-group has-validation" style="gap: 0.5rem;">
+                <input
+                    :type="showPwd ? 'text' : 'password'"
+                    v-model="password"
+                    @blur="touched.password = true"
+                    :class="['form-control', invalid.password.length > 0 && 'is-invalid']"
+                    placeholder="Mind. 8 Zeichen, Buchstaben & Zahl"
+                    required
+                    minlength="8"
+                    maxlength="24"
+                    autocomplete="new-password"
+                    style="border-radius: 0.25rem"
+                />
+                <button
+                    type="button"
+                    class="btn input-lock-btn"
+                    style="border-radius: 0.25rem"
+                    @click="showPwd = !showPwd"
+                    :title="showPwd ? 'Passwort verbergen' : 'Passwort anzeigen'"
+                >
+                  <span v-if="!showPwd">🔒</span>
+                  <span v-else>🔓</span>
+                </button>
+                <div class="invalid-feedback" v-if="invalid.password.length > 0">
+                  <ul class="m-0">
+                    <li v-for="(error, index) in invalid.password" :key="index">{{ error }}</li>
+                  </ul>
+                </div>
               </div>
             </div>
 
+
             <div class="col-12">
               <label class="form-label">Passwort bestätigen</label>
-              <input
-                  v-model="confirmPassword"
-                  @blur="touched.confirmPassword = true"
-                  :class="['form-control', invalid.confirmPassword && 'is-invalid']"
-                  type="password"
-                  minlength="8"
-                  maxlength="24"
-                  placeholder="Passwort erneut eingeben"
-                  required
-              />
-              <div class="invalid-feedback" v-if="invalid.confirmPassword">
-                Die Passwörter stimmen nicht überein.
+              <div class="input-group has-validation" style="gap: 0.5rem;">
+                <input
+                    :type="showConfirm ? 'text' : 'password'"
+                    v-model="confirmPassword"
+                    @blur="touched.confirmPassword = true"
+                    :class="['form-control', invalid.confirmPassword && 'is-invalid']"
+                    minlength="8"
+                    maxlength="24"
+                    placeholder="Passwort erneut eingeben"
+                    required
+                    autocomplete="new-password"
+                    style="border-radius: 0.25rem"
+                />
+                <button
+                    type="button"
+                    style="border-radius: 0.25rem"
+                    class="btn input-lock-btn"
+                    :aria-pressed="showConfirm ? 'true' : 'false'"
+                    @click="showConfirm = !showConfirm"
+                    :title="showConfirm ? 'Passwort verbergen' : 'Passwort anzeigen'"
+                >
+                  <label style="cursor: pointer;" v-if="!showConfirm">🔒</label>
+                  <label style="cursor: pointer;" v-else>🔓</label>
+                </button>
+                <div class="invalid-feedback" v-if="invalid.confirmPassword">
+                  Die Passwörter stimmen nicht überein.
+                </div>
               </div>
             </div>
           </div>
@@ -93,10 +123,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from "vue";
-import { register } from "../services/authService";
-import { toast } from "../composables/toast";
-import { useRouter } from "vue-router";
+import {ref, computed} from "vue";
+import {register} from "../services/authService";
+import {toast} from "../composables/toast";
+import {useRouter} from "vue-router";
 
 const router = useRouter();
 
@@ -104,29 +134,54 @@ const username = ref("");
 const displayname = ref("");
 const password = ref("");
 const confirmPassword = ref("");
+const showPwd = ref(false);
+const showConfirm = ref(false);
 const loading = ref(false);
-const touched = ref({ username: false, displayname: false, password: false, confirmPassword: false });
+const touched = ref({username: false, displayname: false, password: false, confirmPassword: false});
 
 const pwHasLetter = (s: string) => /[A-Za-z]/.test(s);
 const pwHasDigit = (s: string) => /\d/.test(s);
 
-const invalid = computed(() => ({
-  username: touched.value.username && (username.value.length < 3 || username.value.length > 64),
-  displayname: touched.value.displayname && (displayname.value.length < 3 || displayname.value.length > 64),
-  password: touched.value.password && !(password.value.length >= 8 && password.value.length <= 24 && pwHasLetter(password.value) && pwHasDigit(password.value)),
-  confirmPassword: touched.value.confirmPassword && (confirmPassword.value !== password.value),
-}));
+const invalid = computed(() => {
+  const passwordErrors = [];
+
+  if (touched.value.password) {
+    if (password.value.length < 8 || password.value.length > 24) {
+      passwordErrors.push("Mindestens 8 bis max. 24 Zeichen");
+    }
+    if (!pwHasLetter(password.value)) {
+      passwordErrors.push("Mindestens ein Buchstabe (a-z, A-Z)");
+    }
+    if (!pwHasDigit(password.value)) {
+      passwordErrors.push("Mindestens eine Zahl (0-9)");
+    }
+  }
+
+  return {
+    username: touched.value.username && (username.value.length < 3 || username.value.length > 64),
+    displayname: touched.value.displayname && (displayname.value.length < 3 || displayname.value.length > 64),
+    password: passwordErrors,
+    confirmPassword: touched.value.confirmPassword && (confirmPassword.value !== password.value),
+  };
+});
 
 async function onSubmit() {
   touched.value.username = true;
   touched.value.displayname = true;
   touched.value.password = true;
   touched.value.confirmPassword = true;
-  if (invalid.value.username || invalid.value.displayname || invalid.value.password || invalid.value.confirmPassword) return;
+  if (invalid.value.username || invalid.value.displayname || invalid.value.password.length > 0 || invalid.value.confirmPassword) {
+    console.log("invalid form")
+    return;
+  }
 
   loading.value = true;
   try {
-    const { token } = await register({ username: username.value, displayname: displayname.value, password: password.value });
+    const {token} = await register({
+      username: username.value,
+      displayname: displayname.value,
+      password: password.value
+    });
     localStorage.setItem("token", token);
     toast.success("Konto erstellt – willkommen!");
     router.push("/lobby");

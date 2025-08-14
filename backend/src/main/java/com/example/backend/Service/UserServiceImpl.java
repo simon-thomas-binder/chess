@@ -7,6 +7,7 @@ import com.example.backend.entity.User;
 import com.example.backend.exception.ValidationException;
 import com.example.backend.repository.UserRepository;
 import com.example.backend.security.JwtUtil;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
@@ -19,6 +20,7 @@ import java.security.SecureRandom;
 import java.util.Base64;
 
 @Service
+@Slf4j
 public class UserServiceImpl implements UserService {
 
     private final UserRepository userRepository;
@@ -37,11 +39,13 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public ReturnUserDto getUser() {
+        log.trace("getUser");
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null || !auth.isAuthenticated()) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED);
         }
         String username = auth.getName();
+        log.debug("Getting user {}", username);
         User user = userRepository.findByUsername(username)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
         return new ReturnUserDto(user.getUsername(), user.getDisplayname(), user.getCreatedAt(), user.getRating());
@@ -49,8 +53,9 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public String createUser(CreateUserDto createUserDto) {
-
+        log.trace("Registration");
         validateUserCreation(createUserDto);
+        log.debug("Creating user with username: {}", createUserDto.username());
 
         User user = new User();
         String salt = generateSalt();
@@ -66,6 +71,7 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public String loginUser(LoginUserDto loginUserDto) {
+        log.trace("Login");
         User user = userRepository.findByUsername(loginUserDto.username())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "invalid credentials"));
 
@@ -73,18 +79,22 @@ public class UserServiceImpl implements UserService {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "invalid credentials");
         }
 
+        log.debug("Login user with username: {}", loginUserDto.username());
         return jwtUtil.generateToken(user.getUsername());
     }
 
     private String hashPassword(String password, String salt) {
+        log.trace("Hashing password");
         return BCrypt.hashpw(salt + password + pepper, BCrypt.gensalt());
     }
 
     private boolean checkPassword(String password, String salt, String hashed) {
+        log.trace("Checking password");
         return BCrypt.checkpw(salt + password + pepper, hashed);
     }
 
     private static String generateSalt() {
+        log.trace("Generating salt");
         byte[] salt = new byte[SALT_LENGTH];
         SecureRandom secureRandom = new SecureRandom();
         secureRandom.nextBytes(salt);
@@ -92,6 +102,7 @@ public class UserServiceImpl implements UserService {
     }
 
     private void validateUserCreation(CreateUserDto user) {
+        log.trace("Validating user creation");
         if (userRepository.existsByUsername(user.username())){
             throw new ValidationException("Username is already in use");
         }

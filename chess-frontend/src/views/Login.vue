@@ -34,7 +34,7 @@
                 placeholder="••••••••"
                 required
                 minlength="8"
-                maxlength="128"
+                maxlength="24"
                 autocomplete="current-password"
             />
             <div class="invalid-feedback" v-if="invalid.password">
