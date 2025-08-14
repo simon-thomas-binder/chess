@@ -1,0 +1,73 @@
+/* src/styles/main.scss */
+
+/* Farb-Design (Dark) */
+:root {
+  --bg: #0f1012;
+  --bg-soft: #15171b;
+  --panel: rgba(28, 30, 35, 0.8);
+  --panel-solid: #1c1e23;
+  --text: #e7e9ee;
+  --muted: #9aa3b2;
+  --accent: #b6845f; /* warmes Braun als Akzent */
+  --accent-contrast: #0e0f11;
+  --ring: rgba(182, 132, 95, 0.45);
+}
+
+html, body, #app {
+  height: 100%;
+}
+
+body {
+  background: radial-gradient(1200px 800px at 80% -10%, #1d1f26 0%, var(--bg) 60%) fixed;
+  color: var(--text);
+  font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji", sans-serif;
+}
+
+/* Karten/Paneele */
+.card--glass {
+  background: var(--panel);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 14px;
+  box-shadow: 0 12px 30px rgba(0,0,0,0.35);
+}
+
+/* Inputs */
+.form-control, .form-select {
+  background-color: var(--panel-solid);
+  border: 1px solid rgba(255,255,255,0.08);
+  color: var(--text);
+}
+.form-control:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 .2rem var(--ring);
+}
+.form-control::placeholder { color: var(--muted); }
+
+/* Buttons */
+.btn-accent {
+  background: var(--accent);
+  color: var(--accent-contrast);
+  border: none;
+}
+.btn-accent:hover {
+  filter: brightness(1.05);
+}
+.btn-muted {
+  background: #262a31;
+  color: var(--text);
+  border: 1px solid rgba(255,255,255,0.06);
+}
+
+/* Hilfsklassen */
+.page-center {
+  min-height: 100%;
+  display: grid;
+  place-items: center;
+  padding: 2rem;
+}
+
+/* Fehler-Text etwas dezenter */
+.invalid-feedback {
+  color: #ff9aa2;
+}
