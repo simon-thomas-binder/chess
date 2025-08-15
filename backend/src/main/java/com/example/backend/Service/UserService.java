@@ -1,8 +1,9 @@
 package com.example.backend.Service;
 
-import com.example.backend.dto.CreateUserDto;
-import com.example.backend.dto.LoginUserDto;
-import com.example.backend.dto.ReturnUserDto;
+import com.example.backend.dto.User.CreateUserDto;
+import com.example.backend.dto.User.LoginUserDto;
+import com.example.backend.dto.User.TokenDto;
+import com.example.backend.entity.User;
 
 public interface UserService {
 
@@ -11,7 +12,7 @@ public interface UserService {
      *
      * @return the current user
      */
-    ReturnUserDto getUser();
+    User getUser();
 
     /**
      * Creates a user in the database.
@@ -19,7 +20,7 @@ public interface UserService {
      * @param createUserDto user to create
      * @return user token
      */
-    String createUser(CreateUserDto createUserDto);
+    TokenDto createUser(CreateUserDto createUserDto);
 
     /**
      * Login of a user.
@@ -27,5 +28,5 @@ public interface UserService {
      * @param loginUserDto login data
      * @return user token if successful
      */
-    String loginUser(LoginUserDto loginUserDto);
+    TokenDto loginUser(LoginUserDto loginUserDto);
 }

@@ -4,11 +4,17 @@ import Login from "../views/Login.vue";
 import Register from "../views/Register.vue";
 import Lobby from "../views/Lobby.vue"; // Dummy-Seite oder später
 import NotFound from "../views/NotFound.vue";
+import CustomGame from "../views/CustomGame.vue";
+import Friends from "../views/Friends.vue";
+import Profile from "../views/Profile.vue";
 
 const routes = [
     { path: "/login", name: "Login", component: Login },
     { path: "/register", name: "Register", component: Register },
     { path: "/lobby", name: "Lobby", component: Lobby, meta: { requiresAuth: true } },
+    { path: "/custom-game", name: "CustomGame", component: CustomGame },
+    { path: "/profile", name: "Profile", component: Profile, meta: { requiresAuth: true } },
+    { path: "/friends", name: "Friends", component: Friends, meta: { requiresAuth: true } },
     { path: "/", redirect: "/lobby" },
     { path: "/:pathMatch(.*)*", name: "NotFound", component: NotFound },
 ];
