@@ -7,6 +7,7 @@ import NotFound from "../views/NotFound.vue";
 import CustomGame from "../views/CustomGame.vue";
 import Friends from "../views/Friends.vue";
 import Profile from "../views/Profile.vue";
+import Game from "../views/Game.vue";
 
 const routes = [
     { path: "/login", name: "Login", component: Login },
@@ -17,6 +18,7 @@ const routes = [
     { path: "/friends", name: "Friends", component: Friends, meta: { requiresAuth: true } },
     { path: "/", redirect: "/lobby" },
     { path: "/:pathMatch(.*)*", name: "NotFound", component: NotFound },
+    { path: "/game/:id(\\d+)", name: "Game", component: Game, props: true, meta: { requiresAuth: true } },
 ];
 
 const router = createRouter({ history: createWebHistory(), routes });

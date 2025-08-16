@@ -54,6 +54,7 @@ public class GameServiceImpl implements GameService {
 
     @Override
     public void queueGame(Chessboard chessboard) {
+        log.info("queueGame {}", chessboard);
         User user1 = userService.getUser();
 
         dequeueUserFromAll(user1);
@@ -128,7 +129,8 @@ public class GameServiceImpl implements GameService {
                             "opponents", users.entrySet().stream()
                                     .filter(entry -> !entry.getKey().equals(user))
                                     .map(entry -> Map.of("username", entry.getKey().getUsername(), "color", entry.getValue()))
-                                    .toList()
+                                    .toList(),
+                            "chessboard", chessboard
                     )
             ));
         }

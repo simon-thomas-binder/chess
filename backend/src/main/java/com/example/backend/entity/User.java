@@ -1,5 +1,6 @@
 package com.example.backend.entity;
 
+import com.example.backend.dto.User.ReturnUserDto;
 import com.example.backend.enums.UserType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -49,5 +50,9 @@ public class User {
             return username.equals(u.username);
         }
         return false;
+    }
+
+    public ReturnUserDto getUserDto() {
+        return new ReturnUserDto(username, displayname, createdAt, rating);
     }
 }

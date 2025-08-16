@@ -8,13 +8,13 @@
           <div class="card--glass p-3 h-100 d-flex flex-column">
             <div class="avatar-box mb-3">
               <img
-                  :src="user.avatarUrl || '/assets/default-avatar.png'"
+                  :src="'/assets/default-avatar.png'"
                   alt="Profilbild"
                   class="avatar-img"
               />
             </div>
-            <h4 class="fw-semibold mb-1">{{ user.displayName }}</h4>
-            <div class="text-secondary mb-3">ELO: {{ user.elo }}</div>
+            <h4 class="fw-semibold mb-1">{{ user?.displayname }}</h4>
+            <div class="text-secondary mb-3">ELO: {{ user?.rating }}</div>
 
             <div class="d-grid gap-2">
               <button class="btn btn-accent" @click="queueQuickGame" :disabled="loading.quick">
@@ -32,7 +32,7 @@
             </div>
 
             <div class="mt-4 small text-secondary">
-              <div>Hallo, <span class="text-light">{{ user.displayName }}</span> 👋</div>
+              <div>Hallo, <span class="text-light">{{ user?.displayname }}</span> 👋</div>
               <div>Bereit für ein Match? Wähle unten ein Preset oder erstelle ein eigenes Spiel.</div>
             </div>
           </div>
@@ -180,39 +180,18 @@
 </template>
 
 <script setup lang="ts">
-import {onBeforeUnmount, onMounted, ref} from "vue";
+import { onMounted, ref} from "vue";
 import {useRouter} from "vue-router";
 import api from "../api";
 import {toast} from "../composables/toast";
 
 // STOMP/SockJS
-import {Client} from "@stomp/stompjs";
-import SockJS from "sockjs-client";
-import {type ChessboardPayload, queueChessboard} from "../services/gameService.ts";
+import {queueChessboard} from "../services/gameService.ts";
 
 const router = useRouter();
+const user = ref<User | null>(null);
 
-// ---- Dummy/User State (später über Store ersetzen)
-const user = ref({
-  displayName: "Spieler123",
-  elo: 1450,
-  avatarUrl: "",
-});
-
-// Freunde (kurze Liste)
-const friends = ref([
-  {id: 1, name: "Max", online: true},
-  {id: 2, name: "Lena", online: false},
-  {id: 3, name: "Chris", online: true},
-]);
-
-// Zuletzt gespielt (Demo)
-const recentGames = ref([
-  {id: 101, opponent: "Chris", result: "Sieg", date: "14.08.2025", time: "3+2"},
-  {id: 102, opponent: "Alex", result: "Niederlage", date: "13.08.2025", time: "5+0"},
-]);
-
-// Presets
+// Presets for chessboard settings
 const presets = ref([
   {
     id: "bullet-1-0",
@@ -240,110 +219,26 @@ const presets = ref([
   },
 ]);
 
-// UI State
-const loading = ref<{ quick?: boolean; any?: boolean; queueId?: string | null }>({
-  quick: false,
-  any: false,
-  queueId: null,
-});
-const incomingInvite = ref<null | { from: string; gameId: number }>(null);
-const matchFound = ref<null | { gameId: number; color: string }>(null);
+onMounted(async () => {
+  const token = localStorage.getItem("token") || undefined;
+  ws.ensureConnected(token);
 
-// ---- WebSocket (STOMP over SockJS)
-let stomp: Client | null = null;
+  user.value = await getUser()
 
-function getBackendBase(): string {
-  // api.baseURL ist z.B. http://localhost:8080/api → wir strippen /api
-  const base = (import.meta as any).env?.VITE_API_BASE || "http://localhost:8080/api";
-  return base.replace(/\/api\/?$/, "");
-}
-
-function getUsernameFromToken(): string | null {
-  const t = localStorage.getItem("token");
-  if (!t) return null;
-  try {
-    const payload = JSON.parse(atob(t.split(".")[1]));
-    return payload.sub || payload.username || null;
-  } catch {
-    return null;
-  }
-}
-
-function connectWS() {
-  const wsUrl = `${getBackendBase()}/ws`;
-  stomp = new Client({
-    webSocketFactory: () => new SockJS(wsUrl),
-    reconnectDelay: 3000,
-    debug: () => {
-    }, // optional: console.log
+  ws.onUserMessage((msg) => {
+    if (msg.type === "MATCH_FOUND") {
+      const { gameId, color, opponents, chessboard } = msg.payload || {};
+      if (gameId) {
+        console.log(msg.payload)
+        matchStore.setMatch({ gameId, color, opponents, chessboard });
+        router.push({ name: "Game", params: { id: String(gameId) } });
+      }
+    }
+    if (msg.type === "INVITE") {
+      //TODO:
+    }
   });
-
-  stomp.onConnect = () => {
-    const username = getUsernameFromToken();
-    if (!username) {
-      console.warn("Kein Username → kein WS-Connect");
-      return;
-    }
-
-    // Alle User-spezifischen Nachrichten
-    stomp?.subscribe(`/topic/user/${username}`, (frame) => {
-      try {
-        const msg = JSON.parse(frame.body);
-        handleWsMessage(msg);
-      } catch (e) {
-        console.error("WS parse error", e);
-      }
-    });
-  };
-
-  stomp.activate();
-}
-
-function disconnectWS() {
-  stomp?.deactivate();
-  stomp = null;
-}
-
-function handleWsMessage(msg: any) {
-  switch (msg.type) {
-    case "INVITE": {
-      const {from, gameId} = msg.payload || {};
-      if (from && gameId != null) {
-        incomingInvite.value = {from, gameId};
-        toast.info(`Einladung von ${from}`);
-      }
-      break;
-    }
-    case "MATCH_FOUND": {
-      const {gameId, color} = msg.payload || {};
-      if (gameId != null && color) {
-        matchFound.value = {gameId, color};
-        toast.success("Match gefunden!");
-      }
-      break;
-    }
-    default:
-      // spätere Typen
-      break;
-  }
-}
-
-async function queueQuickGame() {
-  loading.value.quick = true;
-  try {
-    const p = presets.value[0];
-    const payload: ChessboardPayload = {
-      width: p.board.width, height: p.board.height,
-      initial_time: p.initial_time, increment: p.increment, delay: p.delay
-    };
-    await queueChessboard(payload);
-    toast.success("Du bist in der Warteschlange.");
-  } catch (e: any) {
-    toast.error(e?.response?.data?.message || "Queue fehlgeschlagen.");
-  } finally {
-    loading.value.quick = false;
-  }
-}
+});
 
 
 async function queuePreset(p: any) {
@@ -355,6 +250,7 @@ async function queuePreset(p: any) {
       initial_time: p.initial_time,
       increment: p.increment,
       delay: p.delay,
+      pieces: initialChessboard.pieces,
     });
     toast.success(`${p.label}: Warteschlange betreten.`);
   } catch (e: any) {
@@ -363,6 +259,74 @@ async function queuePreset(p: any) {
     loading.value.queueId = null;
   }
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+async function queueQuickGame() {
+  loading.value.quick = true;
+  try {
+    const p = presets.value[0];
+    const payload: Chessboard = {
+      ...initialChessboard,
+      initial_time: p.initial_time,
+      increment: p.increment,
+      delay: p.delay
+    };
+    await queueChessboard(payload);
+    toast.success("Du bist in der Warteschlange.");
+    console.log(payload)
+  } catch (e: any) {
+    toast.error(e?.response?.data?.message || "Queue fehlgeschlagen.");
+  } finally {
+    loading.value.quick = false;
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+// ---- Dummy/User State (später über Store ersetzen)
+// Freunde (kurze Liste)
+
+const friends = ref([
+  {id: 1, name: "Max", online: true},
+  {id: 2, name: "Lena", online: false},
+  {id: 3, name: "Chris", online: true},
+]);
+// Zuletzt gespielt (Demo)
+
+
+
+const recentGames = ref([
+  {id: 101, opponent: "Chris", result: "Sieg", date: "14.08.2025", time: "3+2"},
+  {id: 102, opponent: "Alex", result: "Niederlage", date: "13.08.2025", time: "5+0"},
+]);
+// UI State
+const loading = ref<{ quick?: boolean; any?: boolean; queueId?: string | null }>({
+  quick: false,
+  any: false,
+  queueId: null,
+});
+const incomingInvite = ref<null | { from: string; gameId: number }>(null);
+
+const matchFound = ref<null | { gameId: number; color: string }>(null);
 
 async function queueAny() {
   loading.value.any = true;
@@ -382,7 +346,7 @@ function inviteFriend(f: { id: number; name: string }) {
 }
 
 function copyFriendLink() {
-  const link = `${location.origin}/friends/add?ref=${getUsernameFromToken() || "user"}`;
+  const link = `${location.origin}/friends/add?ref=${user?.value?.username || "user"}`;
   navigator.clipboard.writeText(link);
   toast.success("Freundeslink kopiert.");
 }
@@ -399,13 +363,15 @@ function declineInvite() {
   toast.info("Einladung abgelehnt.");
   incomingInvite.value = null;
 }
+import { useMatchStore } from "../stores/matchStore";
+import { useWs } from "../composables/ws";
+import {type Chessboard, initialChessboard} from "../models/chess.ts";
 
-onMounted(() => {
-  connectWS();
-});
-onBeforeUnmount(() => {
-  disconnectWS();
-});
+import {getUser, type User} from "../services/authService.ts";
+const ws = useWs();
+
+const matchStore = useMatchStore();
+
 </script>
 
 <style scoped>
