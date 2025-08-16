@@ -1,8 +1,8 @@
 package com.example.backend.Service;
 
-import com.example.backend.dto.CreateUserDto;
-import com.example.backend.dto.LoginUserDto;
-import com.example.backend.dto.ReturnUserDto;
+import com.example.backend.dto.User.CreateUserDto;
+import com.example.backend.dto.User.LoginUserDto;
+import com.example.backend.dto.User.TokenDto;
 import com.example.backend.entity.User;
 import com.example.backend.exception.ValidationException;
 import com.example.backend.repository.UserRepository;
@@ -38,7 +38,7 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
-    public ReturnUserDto getUser() {
+    public User getUser() {
         log.trace("getUser");
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null || !auth.isAuthenticated()) {
@@ -46,13 +46,12 @@ public class UserServiceImpl implements UserService {
         }
         String username = auth.getName();
         log.debug("Getting user {}", username);
-        User user = userRepository.findByUsername(username)
+        return userRepository.findByUsername(username)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
-        return new ReturnUserDto(user.getUsername(), user.getDisplayname(), user.getCreatedAt(), user.getRating());
     }
 
     @Override
-    public String createUser(CreateUserDto createUserDto) {
+    public TokenDto createUser(CreateUserDto createUserDto) {
         log.trace("Registration");
         validateUserCreation(createUserDto);
         log.debug("Creating user with username: {}", createUserDto.username());
@@ -66,11 +65,11 @@ public class UserServiceImpl implements UserService {
 
         userRepository.save(user);
 
-        return jwtUtil.generateToken(user.getUsername());
+        return new TokenDto(jwtUtil.generateToken(user.getUsername()));
     }
 
     @Override
-    public String loginUser(LoginUserDto loginUserDto) {
+    public TokenDto loginUser(LoginUserDto loginUserDto) {
         log.trace("Login");
         User user = userRepository.findByUsername(loginUserDto.username())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "invalid credentials"));
@@ -80,7 +79,7 @@ public class UserServiceImpl implements UserService {
         }
 
         log.debug("Login user with username: {}", loginUserDto.username());
-        return jwtUtil.generateToken(user.getUsername());
+        return new TokenDto(jwtUtil.generateToken(user.getUsername()));
     }
 
     private String hashPassword(String password, String salt) {

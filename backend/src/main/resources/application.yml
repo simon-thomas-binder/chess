@@ -11,7 +11,7 @@ spring:
       hibernate.jdbc.time_zone: UTC
   flyway:
     validate-on-migrate: false
-    enabled: true
+    enabled: false
     locations: classpath:db/migration
 server:
   port: ${SERVER_PORT:8080}

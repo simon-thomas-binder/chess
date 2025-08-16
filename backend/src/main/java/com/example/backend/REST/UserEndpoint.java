@@ -1,8 +1,9 @@
 package com.example.backend.REST;
 
 import com.example.backend.Service.UserService;
-import com.example.backend.dto.CreateUserDto;
-import com.example.backend.dto.LoginUserDto;
+import com.example.backend.dto.User.CreateUserDto;
+import com.example.backend.dto.User.LoginUserDto;
+import com.example.backend.dto.User.TokenDto;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -20,12 +21,12 @@ public class UserEndpoint {
     private final UserService userService;
 
     @PostMapping("/register")
-    public ResponseEntity<String> createUser(@Valid @RequestBody CreateUserDto createUserDto) {
+    public ResponseEntity<TokenDto> createUser(@Valid @RequestBody CreateUserDto createUserDto) {
         return new ResponseEntity<>(userService.createUser(createUserDto), HttpStatus.CREATED);
     }
 
     @PostMapping("/login")
-    public ResponseEntity<String> login(@Valid @RequestBody LoginUserDto req) {
+    public ResponseEntity<TokenDto> login(@Valid @RequestBody LoginUserDto req) {
         return ResponseEntity.ok(userService.loginUser(req));
     }
 }
