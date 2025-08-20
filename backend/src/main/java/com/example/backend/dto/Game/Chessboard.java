@@ -1,5 +1,6 @@
 package com.example.backend.dto.Game;
 
+import com.example.backend.dto.Game.piece.Piece;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 

@@ -2,54 +2,42 @@ package com.example.backend.Service;
 
 import com.example.backend.dto.Game.Chessboard;
 import com.example.backend.dto.Game.CreateGameDto;
-import com.example.backend.entity.Game;
-import com.example.backend.entity.GameParticipant;
 import com.example.backend.entity.User;
-import com.example.backend.enums.Color;
-import com.example.backend.enums.GameStatus;
-import com.example.backend.repository.GameParticipantRepository;
-import com.example.backend.repository.GameRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 
-import java.util.ArrayDeque;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Queue;
-import java.util.Random;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedDeque;
 
 @Service
 @Slf4j
 @RequiredArgsConstructor
 public class GameServiceImpl implements GameService {
 
-    private final GameRepository gameRepository;
-    private final GameParticipantRepository gameParticipantRepository;
     private final UserService userService;
-    private final SimpMessagingTemplate ws;
-
+    private final GameSessionService gameSessionService;
 
     private final Map<Chessboard, Queue<User>> queue = new ConcurrentHashMap<>();
-    private static final Random random = new Random();
 
     @Override
     public long createGame(CreateGameDto createGameDto) {
+        //TODO
         return 0;
     }
 
     @Override
     public void joinGame(long gameId) {
-
+        //TODO
     }
 
     @Override
     public void declineGame(long gameId) {
-
+        //TODO
     }
 
     @Override
@@ -59,20 +47,21 @@ public class GameServiceImpl implements GameService {
 
         dequeueUserFromAll(user1);
 
-        if (queue.containsKey(chessboard) && !queue.get(chessboard).isEmpty()) {
-            User user2 = queue.get(chessboard).poll();
+        if (!queue.containsKey(chessboard)) {
+            queue.put(chessboard, new ConcurrentLinkedDeque<>());
+        }
 
-            Map<User, Color> participants = new HashMap<>();
-            if (random.nextBoolean()) {
-                participants.put(user1, Color.WHITE);
-                participants.put(user2, Color.BLACK);
-            } else {
-                participants.put(user1, Color.BLACK);
-                participants.put(user2, Color.WHITE);
-            }
-            createGame(chessboard, participants);
+        if (queue.get(chessboard).isEmpty()) {
+            queue.get(chessboard).add(user1);
+            return;
+        }
+
+        User user2 = queue.get(chessboard).poll();
+
+        if (user2 != null) {
+            gameSessionService.createGameSession(chessboard, List.of(user1, user2));
         } else {
-            queue.put(chessboard, new ArrayDeque<>(List.of(user1)));
+            queue.get(chessboard).add(user1);
         }
     }
 
@@ -95,45 +84,6 @@ public class GameServiceImpl implements GameService {
     @Override
     public void deleteGame(long gameId) {
         //TODO
-    }
-
-    private void createGame(Chessboard chessboard, Map<User, Color> users) {
-        log.info("Creating new game");
-        log.debug("Chessboard: {}", chessboard);
-        log.debug("Users: {}", users);
-
-        Game game = new Game();
-        game.setBoardHeight(chessboard.height());
-        game.setBoardWidth(chessboard.width());
-        game.setIncrement(chessboard.increment());
-        game.setDelay(chessboard.delay());
-        game.setInitialTime(chessboard.initial_time());
-        game.setStatus(GameStatus.PENDING);
-
-        System.out.println(game.getStatus());
-
-        Game savedGame = gameRepository.save(game);
-
-        for (User user : users.keySet()) {
-            GameParticipant participant = new GameParticipant();
-            participant.setGame(savedGame);
-            participant.setUser(user);
-            participant.setColor(users.get(user));
-            gameParticipantRepository.save(participant);
-
-            ws.convertAndSend("/topic/user/" + user.getUsername(), Map.of(
-                    "type", "MATCH_FOUND",
-                    "payload", Map.of(
-                            "gameId", savedGame.getId(),
-                            "color", users.get(user),
-                            "opponents", users.entrySet().stream()
-                                    .filter(entry -> !entry.getKey().equals(user))
-                                    .map(entry -> Map.of("username", entry.getKey().getUsername(), "color", entry.getValue()))
-                                    .toList(),
-                            "chessboard", chessboard
-                    )
-            ));
-        }
     }
 
     private void dequeueUserFromAll(User user) {

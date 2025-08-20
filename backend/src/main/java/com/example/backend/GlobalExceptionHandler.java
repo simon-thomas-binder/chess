@@ -2,6 +2,7 @@ package com.example.backend;
 
 import com.example.backend.dto.ApiError;
 import com.example.backend.exception.ConflictException;
+import com.example.backend.exception.NotAuthorizedException;
 import com.example.backend.exception.ValidationException;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
@@ -45,6 +46,12 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiError> handleCustomValidation(ValidationException ex, HttpServletRequest req) {
         log.debug("400 Validation (Custom): {}", ex.getMessage());
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(build(HttpStatus.BAD_REQUEST, ex.getMessage(), req));
+    }
+
+    @ExceptionHandler(NotAuthorizedException.class)
+    public ResponseEntity<ApiError> handleCustomValidation(NotAuthorizedException ex, HttpServletRequest req) {
+        log.debug("403 UNAUTHORIZED (Custom): {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(build(HttpStatus.UNAUTHORIZED, ex.getMessage(), req));
     }
 
     @ExceptionHandler(ConflictException.class)
