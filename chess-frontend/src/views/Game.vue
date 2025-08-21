@@ -78,9 +78,9 @@
 import { onMounted, onBeforeUnmount, reactive, ref } from "vue";
 import { useRoute } from "vue-router";
 import { useWs } from "../composables/ws";
-import { sendMove, sendChat, offerDraw, resign, type MovePayload } from "../services/gameService";
+import {sendChat, offerDraw, resign, getMoves, sendMove} from "../services/gameService";
 import { toast } from "../composables/toast";
-import type {Color, Piece} from "../models/chess.ts";
+import type {Color, Move, Piece, Position} from "../models/chess.ts";
 import { useMatchStore } from "../stores/matchStore";
 
 // ----- Routing / IDs
@@ -94,8 +94,9 @@ const matchStore = useMatchStore();
 const match = ref(matchStore.current);
 
 const cells = ref<any[]>([]);
-const selected = ref<{row:number;col:number}|null>(null);
+const selected = ref<{x:number;y:number}|null>(null);
 const highlights = ref<string[]>([]);
+const highlightedMoves = ref<Record<string, Move>>({});
 const turn = ref<Color>("WHITE");
 
 // players & clocks (demo fallback)
@@ -109,7 +110,7 @@ const chatInput = ref("");
 
 // ----- helpers
 function keyOf(row:number,col:number){ return `${row}:${col}`; }
-function pieceAt(x:number,y:number){ return match.value?.chessboard.pieces.find(p=>p.xPos===x && p.yPos===y) || null; }
+function pieceAt(x:number,y:number){ return match.value?.chessboard.pieces.find(p=>p.position.x===x && p.position.y===y) || null; }
 
 function rebuildCells() {
   const arr:any[] = [];
@@ -128,33 +129,107 @@ function rebuildCells() {
   }
   cells.value = arr;
 }
-function isSelected(cell:any){ return selected.value && selected.value.row===cell.row && selected.value.col===cell.col; }
+
+function isSelected(cell:any){ return selected.value && selected.value.x===cell.row && selected.value.y===cell.col; }
+
 function isHighlighted(cell:any){ return highlights.value.includes(keyOf(cell.row,cell.col)); }
+
+function clearHighlights() {
+  highlights.value = [];
+  highlightedMoves.value = {};
+  selected.value = null;
+}
 
 function pieceSprite(p:Piece){
   return `/pieces/${p.color.toLowerCase()}_${p.type}.png`;
 }
 
-function onCellClick(cell:any){
-  const sel = selected.value;
-  if (!sel) {
-    if (cell.piece /* && piece.color === myColor */) {
-      selected.value = { row: cell.row, col: cell.col };
-      // optional: call /api/games/{id}/legal-moves?from=... to highlight
-      highlights.value = []; // fill with legal targets if you call the API
+async function onCellClick(cell: any) {
+  // Bereits selektiert? egal → keine Aktion
+  if (isSelected(cell)) {
+    return;
+  }
+
+  // Klick auf eine HIGHLIGHT-Zelle → Move spielen
+  if (isHighlighted(cell)) {
+    const key = keyOf(cell.row, cell.col);
+    const move = highlightedMoves.value[key];
+    if (!move) {
+      // Fallback: sollte nicht passieren, aber wir räumen auf
+      clearHighlights();
+      return;
+    }
+
+    try {
+      await sendMove(gameId, move);
+      // UI-Aufräumen; Brett-Update kommt per WS
+      clearHighlights();
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || "Zug konnte nicht gespielt werden");
     }
     return;
   }
 
-  // second click -> try move via HTTP
-  const move: MovePayload = { from: sel, to: { row: cell.row, col: cell.col } };
-  sendMove(gameId, move).catch(e => {
-    toast.error(e?.response?.data?.message || "Illegaler Zug");
-  }).finally(()=>{
-    selected.value = null;
-    highlights.value = [];
-  });
+  // Klick auf eigene Figur → mögliche Züge laden & highlighten
+  if (cell.piece) {
+    // Zelle merken (UI-Selektionsstil)
+    selected.value = { x: cell.row, y: cell.col };
+
+    const position: Position = {
+      x: cell.col,
+      y: (match.value?.chessboard?.height ?? 0) - 1 - cell.row,
+    };
+
+    try {
+      // WICHTIG: nicht 'moves' nennen → nicht die ref überschreiben
+      const availableMoves: Move[] = await getMoves(match.value?.gameId, position);
+
+      if (Array.isArray(availableMoves) && availableMoves.length > 0) {
+        // Map neu befüllen
+        const map: Record<string, Move> = {};
+        for (const mv of availableMoves) {
+          const key = toGridKeyFromChess(mv.to);
+          map[key] = mv;
+        }
+        highlightedMoves.value = map;
+        highlights.value = Object.keys(map);
+      } else {
+        clearHighlights();
+      }
+    } catch {
+      clearHighlights();
+    }
+  } else {
+    // Klick auf leeres Feld ohne Highlight → deselektieren
+    clearHighlights();
+  }
 }
+
+function switchPos(num: number): number {
+  return (match.value?.chessboard?.height ?? 0) - 1 - num;
+}
+
+function toGridKeyFromChess(pos: Position) {
+  const row = switchPos(pos.y);
+  const col = pos.x;
+  return keyOf(row, col);
+}
+
+/*function toGridCoords(pos: Position) {
+  return {
+    row: (match.value?.chessboard?.height ?? 0) - 1 - pos.y,
+    col: pos.x,
+  };
+}*/
+
+
+  // second click -> try move via HTTP
+  // sendMove(gameId, move).catch(e => {
+  //   toast.error(e?.response?.data?.message || "Illegaler Zug");
+  // }).finally(() => {
+  //   selected.value = null;
+  //   highlights.value = [];
+  // });
 
 function onSendChat(){
   console.log(match.value)
@@ -183,20 +258,6 @@ onMounted(async () => {
   ws.subscribeGame(gameId);
   offGameHandler = ws.onGameMessage(gameId, handleGameEvent);
 
-  // initial state via HTTP
-  /*const { data } = await getInitialState(gameId);
-  // expected minimal shape:
-  // { board:{width,height}, pieces:[{id,type,color,row,col}], turn, clocks:{WHITE:ms,BLACK:ms}, players:{WHITE:{name,avatar},BLACK:{...}}, moves:[...]}
-  Object.assign(board, data.board || { width:8, height:8 });
-  pieces.value = data.pieces || [];
-  turn.value = data.turn || "WHITE";
-  white.name = data.players?.WHITE?.name ?? white.name;
-  white.avatar = data.players?.WHITE?.avatar ?? white.avatar;
-  white.time = data.clocks?.WHITE ?? white.time;
-  black.name = data.players?.BLACK?.name ?? black.name;
-  black.avatar = data.players?.BLACK?.avatar ?? black.avatar;
-  black.time = data.clocks?.BLACK ?? black.time;*/
-  //moves.value = data.moves || [];
   rebuildCells();
   console.log("mount: rebuild cells")
 });
@@ -209,25 +270,22 @@ onBeforeUnmount(() => {
 function handleGameEvent(msg:any){
   switch (msg.type) {
     case "MOVE_APPLIED": {
-      // payload: { piece:{id,type,color}, from:{r,c}, to:{r,c}, san, turn, clocks:{WHITE,BLACK}, pieces:[...] (optional) }
-      if (msg.payload?.pieces) {
-        //match.value?.chessboard.pieces = msg.payload.pieces;
-      } else {
-        // minimal update (if backend nur die Zugänderung sendet)
-        //const p = pieces.value.find(x=>x.id===msg.payload.piece.id);
-        //if (p) { p.row = msg.payload.to.row; p.col = msg.payload.to.col; }
+      const move: Move = msg.move;
+      console.log(move)
+
+      const fromCellIndex = cells.value.findIndex(cell => cell.key === keyOf(switchPos(move.from.y), move.from.x));
+      const toCellIndex = cells.value.findIndex(cell => cell.key === keyOf(switchPos(move.to.y), move.to.x));
+
+      const piece: Piece = {type: move.piece.type, position: {x: move.to.x, y: move.to.y}, color: move.piece.color}
+
+      console.log("Piece: " + piece)
+
+      if (fromCellIndex !== -1 && toCellIndex !== -1) {
+        cells.value[fromCellIndex] = { ...cells.value[fromCellIndex], piece: null };
+        cells.value[toCellIndex] = { ...cells.value[toCellIndex], piece: piece };
       }
-      moves.value.push({
-        piece: msg.payload.piece.type,
-        to: msg.payload.to,
-        san: msg.payload.san
-      });
-      turn.value = msg.payload.turn;
-      if (msg.payload.clocks) {
-        white.time = msg.payload.clocks.WHITE ?? white.time;
-        black.time = msg.payload.clocks.BLACK ?? black.time;
-      }
-      rebuildCells();
+
+      console.log("Moved played")
       break;
     }
     case "CHAT": {

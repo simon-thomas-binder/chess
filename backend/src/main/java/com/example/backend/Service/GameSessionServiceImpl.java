@@ -7,6 +7,7 @@ import com.example.backend.entity.User;
 import com.example.backend.exception.ConflictException;
 import com.example.backend.repository.GameParticipantRepository;
 import com.example.backend.repository.GameRepository;
+import com.example.backend.repository.MoveRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
@@ -25,6 +26,7 @@ public class GameSessionServiceImpl implements GameSessionService {
     private final GameRepository gameRepository;
     private final GameParticipantRepository gameParticipantRepository;
     private final SimpMessagingTemplate ws;
+    private final MoveRepository moveRepository;
     private final UserService userService;
 
     private final Map<Long, GameSession> gameSessions = new ConcurrentHashMap<>();
@@ -32,7 +34,7 @@ public class GameSessionServiceImpl implements GameSessionService {
     @Override
     public void createGameSession(Chessboard board, List<User> users) {
         log.info("Creating game session");
-        GameSession session = new GameSession(board, users, gameRepository, gameParticipantRepository, ws);
+        GameSession session = new GameSession(board, users, gameRepository, gameParticipantRepository, ws, moveRepository);
         long id = session.getGameId();
 
         gameSessions.put(id, session);
@@ -50,6 +52,11 @@ public class GameSessionServiceImpl implements GameSessionService {
 
     @Override
     public void playMove(long gameId, MoveDto moveDto) {
+        GameSession session = gameSessions.get(gameId);
+        if (session == null) {
+            throw new ConflictException("Game session does not exist");
+        }
 
+        session.playMove(moveDto, userService.getUser().getUsername());
     }
 }

@@ -4,6 +4,8 @@ import com.example.backend.Service.GameSessionService;
 import com.example.backend.dto.Game.MoveDto;
 import com.example.backend.dto.Game.PositionDto;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -22,13 +24,14 @@ public class MoveEndpoint {
     private final GameSessionService gameSessionService;
 
     @GetMapping("/{id}")
-    public Collection<MoveDto> getMoves(@PathVariable long id, @RequestParam int x, @RequestParam int y) {
+    public ResponseEntity<Collection<MoveDto>> getMoves(@PathVariable long id, @RequestParam int x, @RequestParam int y) {
         PositionDto pos = new PositionDto(x, y);
-        return gameSessionService.getMoves(id, pos);
+        return new ResponseEntity<>(gameSessionService.getMoves(id, pos), HttpStatus.OK);
     }
 
     @PostMapping("/{id}")
-    public void playMove(@PathVariable long id, @RequestBody MoveDto moveDto) {
-        //TODO
+    public ResponseEntity<Void> playMove(@PathVariable long id, @RequestBody MoveDto moveDto) {
+        gameSessionService.playMove(id, moveDto);
+        return new ResponseEntity<>(HttpStatus.OK);
     }
 }

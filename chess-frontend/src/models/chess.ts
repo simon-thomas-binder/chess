@@ -4,6 +4,8 @@ export type Color = "WHITE" | "BLACK";
 //Types of pieces
 export type PieceType = "KING" | "QUEEN" | "KNIGHT" | "BISHOP" | "ROOK" | "PAWN";
 
+export type MoveFlag = "NORMAL" | "CAPTURE" | "CASTLE_KING" | "CASTLE_QUEEN" | "PROMOTION" | "EN_PASSANT"
+
 //Chessboard structure
 export interface Chessboard {
     width: number;
@@ -17,9 +19,21 @@ export interface Chessboard {
 //Piece structure
 export interface Piece {
     type: PieceType;
-    xPos: number; // horizontal
-    yPos: number; // vertical
+    position: Position;
     color: Color
+}
+
+export interface Position {
+    x: number;
+    y: number;
+}
+
+export interface Move {
+    from: Position;
+    to: Position;
+    piece: Piece;
+    flag: MoveFlag;
+    promotionTo: PieceType;
 }
 
 //Standard chess board
@@ -30,37 +44,37 @@ export const initialChessboard: Chessboard = {
     increment: 1000,
     delay: 0,
     pieces: [
-        { type: "ROOK", xPos: 0, yPos: 0, color: "WHITE" },
-        { type: "KNIGHT", xPos: 1, yPos: 0, color: "WHITE" },
-        { type: "BISHOP", xPos: 2, yPos: 0, color: "WHITE" },
-        { type: "QUEEN", xPos: 3, yPos: 0, color: "WHITE" },
-        { type: "KING", xPos: 4, yPos: 0, color: "WHITE" },
-        { type: "BISHOP", xPos: 5, yPos: 0, color: "WHITE" },
-        { type: "KNIGHT", xPos: 6, yPos: 0, color: "WHITE" },
-        { type: "ROOK", xPos: 7, yPos: 0, color: "WHITE" },
-        { type: "PAWN", xPos: 0, yPos: 1, color: "WHITE" },
-        { type: "PAWN", xPos: 1, yPos: 1, color: "WHITE" },
-        { type: "PAWN", xPos: 2, yPos: 1, color: "WHITE" },
-        { type: "PAWN", xPos: 3, yPos: 1, color: "WHITE" },
-        { type: "PAWN", xPos: 4, yPos: 1, color: "WHITE" },
-        { type: "PAWN", xPos: 5, yPos: 1, color: "WHITE" },
-        { type: "PAWN", xPos: 6, yPos: 1, color: "WHITE" },
-        { type: "PAWN", xPos: 7, yPos: 1, color: "WHITE" },
-        { type: "ROOK", xPos: 0, yPos: 7, color: "BLACK" },
-        { type: "KNIGHT", xPos: 1, yPos: 7, color: "BLACK" },
-        { type: "BISHOP", xPos: 2, yPos: 7, color: "BLACK" },
-        { type: "QUEEN", xPos: 3, yPos: 7, color: "BLACK" },
-        { type: "KING", xPos: 4, yPos: 7, color: "BLACK" },
-        { type: "BISHOP", xPos: 5, yPos: 7, color: "BLACK" },
-        { type: "KNIGHT", xPos: 6, yPos: 7, color: "BLACK" },
-        { type: "ROOK", xPos: 7, yPos: 7, color: "BLACK" },
-        { type: "PAWN", xPos: 0, yPos: 6, color: "BLACK" },
-        { type: "PAWN", xPos: 1, yPos: 6, color: "BLACK" },
-        { type: "PAWN", xPos: 2, yPos: 6, color: "BLACK" },
-        { type: "PAWN", xPos: 3, yPos: 6, color: "BLACK" },
-        { type: "PAWN", xPos: 4, yPos: 6, color: "BLACK" },
-        { type: "PAWN", xPos: 5, yPos: 6, color: "BLACK" },
-        { type: "PAWN", xPos: 6, yPos: 6, color: "BLACK" },
-        { type: "PAWN", xPos: 7, yPos: 6, color: "BLACK" },
+        { type: "ROOK", position: { x: 0, y: 0 }, color: "WHITE" },
+        { type: "KNIGHT", position: { x: 1, y: 0 }, color: "WHITE" },
+        { type: "BISHOP", position: { x: 2, y: 0 }, color: "WHITE" },
+        { type: "QUEEN", position: { x: 3, y: 0 }, color: "WHITE" },
+        { type: "KING", position: { x: 4, y: 0 }, color: "WHITE" },
+        { type: "BISHOP", position: { x: 5, y: 0 }, color: "WHITE" },
+        { type: "KNIGHT", position: { x: 6, y: 0 }, color: "WHITE" },
+        { type: "ROOK", position: { x: 7, y: 0 }, color: "WHITE" },
+        { type: "PAWN", position: { x: 0, y: 1 }, color: "WHITE" },
+        { type: "PAWN", position: { x: 1, y: 1 }, color: "WHITE" },
+        { type: "PAWN", position: { x: 2, y: 1 }, color: "WHITE" },
+        { type: "PAWN", position: { x: 3, y: 1 }, color: "WHITE" },
+        { type: "PAWN", position: { x: 4, y: 1 }, color: "WHITE" },
+        { type: "PAWN", position: { x: 5, y: 1 }, color: "WHITE" },
+        { type: "PAWN", position: { x: 6, y: 1 }, color: "WHITE" },
+        { type: "PAWN", position: { x: 7, y: 1 }, color: "WHITE" },
+        { type: "ROOK", position: { x: 0, y: 7 }, color: "BLACK" },
+        { type: "KNIGHT", position: { x: 1, y: 7 }, color: "BLACK" },
+        { type: "BISHOP", position: { x: 2, y: 7 }, color: "BLACK" },
+        { type: "QUEEN", position: { x: 3, y: 7 }, color: "BLACK" },
+        { type: "KING", position: { x: 4, y: 7 }, color: "BLACK" },
+        { type: "BISHOP", position: { x: 5, y: 7 }, color: "BLACK" },
+        { type: "KNIGHT", position: { x: 6, y: 7 }, color: "BLACK" },
+        { type: "ROOK", position: { x: 7, y: 7 }, color: "BLACK" },
+        { type: "PAWN", position: { x: 0, y: 6 }, color: "BLACK" },
+        { type: "PAWN", position: { x: 1, y: 6 }, color: "BLACK" },
+        { type: "PAWN", position: { x: 2, y: 6 }, color: "BLACK" },
+        { type: "PAWN", position: { x: 3, y: 6 }, color: "BLACK" },
+        { type: "PAWN", position: { x: 4, y: 6 }, color: "BLACK" },
+        { type: "PAWN", position: { x: 5, y: 6 }, color: "BLACK" },
+        { type: "PAWN", position: { x: 6, y: 6 }, color: "BLACK" },
+        { type: "PAWN", position: { x: 7, y: 6 }, color: "BLACK" },
     ]
 };

@@ -12,8 +12,6 @@ import java.util.Collection;
 
 public class Pawn extends Piece {
 
-    private boolean hasMoved;
-
     public Pawn(PositionDto position, Color color, PieceType type) {
         this.position = position;
         this.color = color;
@@ -32,15 +30,19 @@ public class Pawn extends Piece {
             dir = 1;
         }
 
-        moves.addAll(board.pieces().stream().filter(piece -> piece.getColor() != this.color)
-                .filter(piece -> piece.position.x() == this.position.x() + dir + 1 || piece.position.x() == this.position.x() + dir - 1)
-                .map(piece -> new MoveDto(this.position, piece.position, this, MoveFlag.CAPTURE, null)).toList());
 
-        moves.addAll(board.pieces().stream()
-                .filter(piece -> piece.getPosition()
-                        .equals(new PositionDto(this.position.x(), this.position.y() + dir)))
-                .map(piece -> new MoveDto(this.position, piece.position, this, MoveFlag.NORMAL, null))
-                .toList());
+        for (Piece piece : board.pieces()) {
+            if (new PositionDto(this.position.x() + 1, this.position.y() + dir).equals(piece.getPosition()) ||
+                    new PositionDto(this.position.x() - 1, this.position.y() + dir).equals(piece.getPosition())) {
+                moves.add(new MoveDto(this.position, piece.position, this, MoveFlag.CAPTURE, null));
+            }
+        }
+
+        if (board.pieces().stream()
+                .noneMatch(piece -> piece.getPosition()
+                        .equals(new PositionDto(this.position.x(), this.position.y() + dir)))) {
+            moves.add(new MoveDto(this.position, new PositionDto(this.position.x(), this.position.y() + dir), this, MoveFlag.NORMAL, null));
+        }
 
         if (!this.hasMoved && board.pieces().stream().noneMatch(piece -> piece.getPosition()
                 .equals(new PositionDto(this.position.x(), this.position.y() + dir)) || piece.getPosition()

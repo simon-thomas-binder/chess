@@ -36,6 +36,7 @@ public abstract class Piece {
     protected PositionDto position;
     protected Color color;
     protected PieceType type;
+    protected boolean hasMoved;
 
     /**
      * Calculates all valid moves for this piece
@@ -44,6 +45,13 @@ public abstract class Piece {
      * @return a Collection of all valid moves
      */
     public abstract Collection<MoveDto> getMoves(Chessboard board);
+
+    /**
+     * Massages this piece that it has been moved
+     */
+    public void massageMove() {
+        hasMoved = true;
+    }
 
     /**
      * Recursively calculates possible moves from the current position in multiple directions
