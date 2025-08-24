@@ -1,38 +1,53 @@
 package com.example.backend.Service;
 import com.example.backend.dto.Game.Chessboard;
 import com.example.backend.dto.Game.MoveDto;
+import com.example.backend.dto.Game.Player;
 import com.example.backend.dto.Game.PositionDto;
 import com.example.backend.dto.Game.piece.Piece;
 import com.example.backend.entity.Game;
 import com.example.backend.entity.GameParticipant;
 import com.example.backend.entity.Move;
-import com.example.backend.entity.Position;
 import com.example.backend.entity.User;
 import com.example.backend.enums.Color;
+import com.example.backend.enums.GameEndFlag;
 import com.example.backend.enums.GameStatus;
 import com.example.backend.exception.NotAuthorizedException;
 import com.example.backend.repository.GameParticipantRepository;
 import com.example.backend.repository.GameRepository;
 import com.example.backend.repository.MoveRepository;
-import lombok.Getter;
-import lombok.Setter;
+import com.example.backend.ws.WsService;
+import com.example.backend.ws.WsServiceImpl;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 
-import java.time.Instant;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Queue;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 
+/**
+ * GameSession objects that stores data for the chess game
+ */
 public class GameSession {
+
+    // Scheduler fot the game clock
+    private static final ScheduledExecutorService SCHEDULER = Executors.newScheduledThreadPool(
+            Math.max(2, Runtime.getRuntime().availableProcessors() / 2), r -> {
+                Thread t = new Thread(r, "game-clock");
+                t.setDaemon(true);
+                return t;
+            });
+
+    private ScheduledFuture<?> currentTimerTask;
 
     private final GameRepository gameRepository;
     private final MoveRepository moveRepository;
-    private final SimpMessagingTemplate ws;
+    private final WsService wsService;
 
     private final Chessboard board;
     private final List<Player> players = new ArrayList<>();
@@ -45,25 +60,17 @@ public class GameSession {
     private Game game;
     private Long lastTurnStartMs = null;
 
+    // Constructor
     public GameSession(Chessboard board, List<User> users,
                        GameRepository gameRepository,
                        GameParticipantRepository gameParticipantRepository,
                        SimpMessagingTemplate ws,
                        MoveRepository moveRepository) {
         this.gameRepository = gameRepository;
-        this.ws = ws;
         this.moveRepository = moveRepository;
-
         this.board = board;
-
-        game = new Game();
-        game.setBoardHeight(board.height());
-        game.setBoardWidth(board.width());
-        game.setIncrement(board.increment());
-        game.setDelay(board.delay());
-        game.setInitialTime(board.initial_time());
-        game.setStatus(GameStatus.PENDING);
-        safe(game);
+        this.game = gameRepository.save(Game.newGame(board));
+        this.wsService = new WsServiceImpl(ws, game.getId());
 
         Queue<Color> colors = new ArrayDeque<>(Arrays.asList(Color.WHITE, Color.BLACK));
 
@@ -82,21 +89,7 @@ public class GameSession {
             participant.setColor(color);
             gameParticipantRepository.save(participant);
         }
-
-        for (Player player : players) {
-            ws.convertAndSend("/topic/user/" + player.getUsername(), Map.of(
-                    "type", "MATCH_FOUND",
-                    "payload", Map.of(
-                            "gameId", game.getId(),
-                            "color", player.getColor(),
-                            "opponents", players.stream()
-                                    .filter(entry -> !entry.equals(player))
-                                    .map(entry -> Map.of("username", entry.getUsername(), "color", entry.getColor()))
-                                    .toList(),
-                            "chessboard", board
-                    )
-            ));
-        }
+        wsService.sendMatchFound(players, board);
     }
 
     public long getGameId() {
@@ -150,51 +143,15 @@ public class GameSession {
         }
 
         if (lastTurnStartMs != null) {
-            player.setRemainingTime(player.getRemainingTime() - (lastTurnStartMs - System.currentTimeMillis()) + board.delay());
+            player.setRemainingTime(player.getRemainingTime() - (System.currentTimeMillis() - lastTurnStartMs) + board.delay());
         } else {
             game.setStatus(GameStatus.ACTIVE);
             safe(game);
         }
 
         lastTurnStartMs = System.currentTimeMillis();
-
-        Move moveEntity = new Move();
-        moveEntity.setGame(game);
-        moveEntity.setFrom(new Position(move.from().x(), move.from().y()));
-        moveEntity.setTo(new Position(move.to().x(), move.to().y()));
-        moveEntity.setMove(move.flag());
-        moveEntity.setActor(player.getColor());
-        moveEntity.setPiece(move.piece().getType());
-        moveEntity.setPly(ply);
-        moveEntity.setPromotionTo(move.promotionTo());
-        moveEntity.setServerReceivedAt(Instant.now());
-        moveEntity.setActorTimeLeftMsAfter(player.getRemainingTime());
-
-        moveRepository.save(moveEntity);
-
-        Map<String, Object> message = new HashMap<>();
-
-        message.put("type", "MOVE_APPLIED");
-
-        Map<String, Object> moveDetails = new HashMap<>();
-        moveDetails.put("from", Map.of("x", move.from().x(), "y", move.from().y()));
-        moveDetails.put("to", Map.of("x", move.to().x(), "y", move.to().y()));
-        moveDetails.put("piece", move.piece());
-        moveDetails.put("flag", move.flag().name());
-        moveDetails.put("promotionTo", move.promotionTo() != null ? move.promotionTo().name() : null);
-
-        message.put("move", moveDetails);
-        message.put("currentTurn", turn.name());
-
-        Map<String, Long> remainingTime = new HashMap<>();
-        for (Player p : players) {
-            remainingTime.put(p.getColor().name().toLowerCase(), p.getRemainingTime());
-        }
-
-        message.put("remainingTime", remainingTime);
-        message.put("status", game.getStatus().name());
-
-        ws.convertAndSend("/topic/game/" + getGameId(), message);
+        moveRepository.save(Move.newMove(move, game, player, ply));
+        wsService.sendMoveApplied(move, turn, players, game.getStatus());
 
         board.move(move);
         ply++;
@@ -205,22 +162,33 @@ public class GameSession {
         } else {
             turn = Color.WHITE;
         }
+
+        timer(players.stream().filter(p -> p.getColor().equals(turn)).findFirst().orElseThrow().getRemainingTime());
     }
 
     private void safe(Game game) {
         this.game = gameRepository.save(game);
     }
-}
 
-@Getter @Setter
-class Player {
-    private final String username;
-    private final Color color;
-    private long remainingTime;
+    // timer restart function
+    private synchronized void timer(long time) {
 
-    Player(String username, Color color, long remainingTime) {
-        this.username = username;
-        this.color = color;
-        this.remainingTime = remainingTime;
+        if (currentTimerTask != null) {
+            currentTimerTask.cancel(false);
+        }
+
+        currentTimerTask = SCHEDULER.schedule(this::timeUp, time, TimeUnit.MILLISECONDS);
+    }
+
+    // trigger for when the time for a player has run out
+    private void timeUp() {
+        Color color = this.turn;
+
+        players.remove(players.stream().filter(p -> p.getColor().equals(color)).findFirst().orElse(null));
+        if (players.size() == 1) {
+            Color winner = players.getFirst().getColor();
+            safe(Game.endGame(game, winner));
+            wsService.sendGameEnded(GameEndFlag.TIMEOUT, winner);
+        }
     }
 }

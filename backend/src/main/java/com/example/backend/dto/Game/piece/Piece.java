@@ -119,6 +119,44 @@ public abstract class Piece {
         return result;
     }
 
+    /**
+     * Calculates moves based on direction from this piece
+     * Precondition: xDir and yDir must be of the same length
+     *
+     * @param board board to calculate on
+     * @param xDir The list of horizontal directions to move
+     * @param yDir The list of vertical directions to move
+     * @return A list of valid moves from the current position
+     */
+    protected List<MoveDto> step(Chessboard board, List<Integer> xDir, List<Integer> yDir) {
+        if (xDir.size() != yDir.size()) {
+            throw new IllegalArgumentException("xDir and yDir must be of the same length!");
+        }
+
+        List<MoveDto> result = new ArrayList<>();
+
+        for (int i = 0; i < xDir.size(); i++) {
+            PositionDto pos = new PositionDto(this.position.x() + xDir.get(i), this.position.y() + yDir.get(i));
+
+            if (!(pos.x() < 0 || pos.x() >= board.width() || pos.y() < 0 || pos.y() >= board.height())) {
+                Piece occupyingPiece = board.pieces().stream()
+                        .filter(piece -> piece.getPosition().equals(pos))
+                        .findFirst()
+                        .orElse(null);
+
+                if (occupyingPiece != null) {
+                    if (occupyingPiece.getColor() != this.color) {
+                        result.add(new MoveDto(this.position, pos, this, MoveFlag.CAPTURE, null));
+                    }
+                } else {
+                    result.add(new MoveDto(this.position, pos, this, MoveFlag.NORMAL, null));
+                }
+            }
+        }
+
+        return result;
+    }
+
     @Override
     public boolean equals(Object obj) {
         if (obj instanceof Piece piece) {

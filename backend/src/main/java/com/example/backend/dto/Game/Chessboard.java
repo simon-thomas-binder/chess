@@ -1,6 +1,7 @@
 package com.example.backend.dto.Game;
 
 import com.example.backend.dto.Game.piece.Piece;
+import com.example.backend.enums.MoveFlag;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 
@@ -14,6 +15,9 @@ public record Chessboard(@Min(3) @Max(64) int width, @Min(3) @Max(64) int height
      * @param moveDto move data
      */
     public void move(MoveDto moveDto) {
+        if (moveDto.flag() == MoveFlag.CAPTURE) {
+            pieces.removeIf(piece -> piece.getPosition().equals(moveDto.to()));
+        }
         for (Piece piece : pieces) {
             if (piece.getPosition().equals(moveDto.from())) {
                 piece.setPosition(moveDto.to());

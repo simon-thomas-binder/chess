@@ -6,12 +6,16 @@
         <div class="card--glass p-3 text-center mb-3">
           <div class="avatar-box mb-2"><img :src="white.avatar" class="avatar-img" /></div>
           <h6 class="fw-semibold">{{ white.name }}</h6>
-          <div class="timer" :class="{ active: turn === 'WHITE' }">{{ formatTime(white.time) }}</div>
+          <div class="timer" :class="{ active: turn === 'WHITE', low: white.time <= 10000 }">
+            {{ formatTime(white.time) }}
+          </div>
         </div>
         <div class="card--glass p-3 text-center">
           <div class="avatar-box mb-2"><img :src="black.avatar" class="avatar-img" /></div>
           <h6 class="fw-semibold">{{ black.name }}</h6>
-          <div class="timer" :class="{ active: turn === 'BLACK' }">{{ formatTime(black.time) }}</div>
+          <div class="timer" :class="{ active: turn === 'BLACK', low: black.time <= 10000 }">
+            {{ formatTime(black.time) }}
+          </div>
         </div>
         <div class="card--glass p-3 mt-3">
           <div class="d-grid gap-2">
@@ -70,6 +74,20 @@
           </div>
         </div>
       </div>
+
+      <!-- Endscreen Overlay -->
+      <div v-if="end.open" class="end-overlay" @click.self="end.open = false">
+        <div class="end-card">
+          <h3 class="mb-2">Partie beendet</h3>
+          <p class="mb-1" v-if="end.winner">Sieger: <strong>{{ end.winner }}</strong></p>
+          <p class="text-muted mb-4">Grund: {{ end.endFlag }}</p>
+          <div class="d-flex gap-2">
+            <button class="btn btn-accent" @click="">Revanche</button>
+            <button class="btn btn-muted" @click="">Zurück</button>
+          </div>
+        </div>
+      </div>
+
     </div>
   </div>
 </template>
@@ -111,6 +129,52 @@ const chatInput = ref("");
 // ----- helpers
 function keyOf(row:number,col:number){ return `${row}:${col}`; }
 function pieceAt(x:number,y:number){ return match.value?.chessboard.pieces.find(p=>p.position.x===x && p.position.y===y) || null; }
+
+// --- Board sizing ---
+const boardWrap = ref<HTMLElement | null>(null);
+let resizeObs: ResizeObserver | null = null;
+
+const end = reactive<{ open: boolean; winner: Color | null; endFlag: string }>({
+  open: false,
+  winner: null,
+  endFlag: "",
+});
+
+let ticking = false;
+let rafId = 0;
+let lastTs = 0;
+
+function startClock() {
+  if (ticking) return;
+  ticking = true;
+  lastTs = performance.now();
+  rafId = requestAnimationFrame(stepClock);
+}
+function stopClock() {
+  ticking = false;
+  cancelAnimationFrame(rafId);
+}
+function stepClock(ts: number) {
+  const dt = ts - lastTs;
+  lastTs = ts;
+  if (turn.value === "WHITE") white.time = Math.max(0, white.time - dt);
+  else if (turn.value === "BLACK") black.time = Math.max(0, black.time - dt);
+  if (ticking && !end.open && white.time > 0 && black.time > 0) {
+    rafId = requestAnimationFrame(stepClock);
+  }
+}
+
+function syncClockFromWs(remaining?: Record<string, number>, nextTurn?: Color) {
+  if (remaining) {
+    const w = (remaining as any).white ?? (remaining as any).WHITE ?? (remaining as any).White;
+    const b = (remaining as any).black ?? (remaining as any).BLACK ?? (remaining as any).Black;
+    if (typeof w === "number") white.time = w;
+    if (typeof b === "number") black.time = b;
+  }
+  if (nextTurn === "WHITE" || nextTurn === "BLACK") turn.value = nextTurn;
+  stopClock();
+  if (!end.open) startClock();
+}
 
 function rebuildCells() {
   const arr:any[] = [];
@@ -267,6 +331,16 @@ onBeforeUnmount(() => {
   ws.unsubscribeGame(gameId);
 });
 
+onBeforeUnmount(() => {
+  offGameHandler?.();
+  ws.unsubscribeGame(gameId);
+  if (resizeObs && boardWrap.value?.parentElement) {
+    //resizeObs.unobserve(boardWrap.value.parentElement);
+  }
+  stopClock();
+});
+
+
 function handleGameEvent(msg:any){
   switch (msg.type) {
     case "MOVE_APPLIED": {
@@ -285,12 +359,23 @@ function handleGameEvent(msg:any){
         cells.value[toCellIndex] = { ...cells.value[toCellIndex], piece: piece };
       }
 
+      turn.value = (turn.value === "WHITE") ? "BLACK" : "WHITE";
+      syncClockFromWs(msg.remainingTime, turn.value );
+      clearHighlights();
       console.log("Moved played")
       break;
     }
     case "CHAT": {
       // payload: { id, sender, text }
       chat.value.push(msg.payload);
+      break;
+    }
+    case "GAME_ENDED": {
+      const { winner, endFlag } = msg.details || {};
+      end.open = true;
+      end.winner = (winner === "WHITE" || winner === "BLACK") ? winner : null;
+      end.endFlag = typeof endFlag === "string" ? endFlag : "UNSPECIFIED";
+      stopClock();
       break;
     }
     case "CLOCK_SYNC": {
@@ -314,7 +399,6 @@ function handleGameEvent(msg:any){
 .board {
   display: grid;
   gap: 4px;
-  height: 100%;
 }
 .cell {
   width: 100%;
@@ -327,13 +411,41 @@ function handleGameEvent(msg:any){
   place-items: center;
 }
 .cell.dark { background: #b58863; }
-.cell.sel { outline: 2px solid var(--accent); }
+
+/* moderne Highlights & Auswahl */
+.cell.hl { position: relative; isolation: isolate; }
 .cell.hl::after {
   content: "";
-  width: 30%;
-  height: 30%;
+  position: absolute; inset: 18%;
   border-radius: 50%;
-  background: rgba(20,255,20,0.5);
+  background: rgba(220, 220, 220, 0.8);
+  box-shadow:
+      0 0 0 3px rgba(0, 170, 136, 0.75),
+      0 0 20px rgba(0, 170, 136, 0.55);
+  z-index: 1; pointer-events: none; mix-blend-mode: screen;
+}
+
+.cell:not(.dark).hl::after {
+  background: rgb(73, 44, 22);
+  box-shadow:
+      0 0 0 3px color-mix(in srgb, var(--accent) 80%, transparent),
+      0 0 20px color-mix(in srgb, var(--accent) 80%, transparent);
+}
+
+@supports (background: color-mix(in srgb, red 50%, transparent)) {
+  .cell.hl::after {
+    background: color-mix(in srgb, var(--accent) 80%, transparent);
+    box-shadow:
+        0 0 0 3px color-mix(in srgb, var(--accent) 90%, transparent),
+        0 0 20px color-mix(in srgb, var(--accent) 80%, transparent);
+  }
+}
+.cell.sel {
+  outline: none;
+  box-shadow:
+      0 0 0 3px color-mix(in srgb, var(--accent) 80%, transparent),
+      0 0 25px color-mix(in srgb, var(--accent) 80%, transparent);
+  z-index: 2;
 }
 .piece { max-width: 88%; max-height: 88%; user-select: none; }
 
@@ -348,4 +460,22 @@ function handleGameEvent(msg:any){
 .moves { max-height: 25vh; overflow-y: auto; }
 .move-row { display:flex; gap:.5rem; }
 .idx { width: 2.5rem; color: var(--secondary); }
+
+/* Endscreen */
+.end-overlay {
+  position: fixed; inset: 0; z-index: 9999;
+  background: rgba(10,10,14,0.6); backdrop-filter: blur(6px);
+  display: grid; place-items: center;
+  margin-top: 0;
+}
+.end-card {
+  background: linear-gradient(180deg, rgba(30,32,38,.9), rgba(24,26,32,.9));
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 1rem;
+  padding: 1.5rem;
+  min-width: min(92vw, 420px);
+  text-align: center;
+  box-shadow: 0 10px 40px rgba(0,0,0,.5);
+}
+.text-muted { color: var(--secondary); }
 </style>

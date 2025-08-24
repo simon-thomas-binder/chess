@@ -1,5 +1,7 @@
 package com.example.backend.entity;
 
+import com.example.backend.dto.Game.MoveDto;
+import com.example.backend.dto.Game.Player;
 import com.example.backend.enums.Color;
 import com.example.backend.enums.MoveFlag;
 import com.example.backend.enums.PieceType;
@@ -77,4 +79,27 @@ public class Move {
     @Column(name = "server_received_at", nullable = false, updatable = false)
     private Instant serverReceivedAt;
 
+    /**
+     * Creates a new Move entity
+     *
+     * @param move dto with move infos
+     * @param game game entity
+     * @param player who plays this move
+     * @param ply number of this move
+     * @return new move entity
+     */
+    public static Move newMove(MoveDto move, Game game, Player player, int ply) {
+        Move moveEntity = new Move();
+        moveEntity.setGame(game);
+        moveEntity.setFrom(new Position(move.from().x(), move.from().y()));
+        moveEntity.setTo(new Position(move.to().x(), move.to().y()));
+        moveEntity.setMove(move.flag());
+        moveEntity.setActor(player.getColor());
+        moveEntity.setPiece(move.piece().getType());
+        moveEntity.setPly(ply);
+        moveEntity.setPromotionTo(move.promotionTo());
+        moveEntity.setServerReceivedAt(Instant.now());
+        moveEntity.setActorTimeLeftMsAfter(player.getRemainingTime());
+        return moveEntity;
+    }
 }

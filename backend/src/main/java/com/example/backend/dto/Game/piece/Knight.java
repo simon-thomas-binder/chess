@@ -12,6 +12,6 @@ public class Knight extends Piece {
 
     @Override
     public Collection<MoveDto> getMoves(Chessboard board) {
-        return List.of();
+        return this.step(board, List.of(2, 2, -2, -2, 1, 1, -1, -1), List.of(1, -1, 1, -1, 2, -2, 2, -2));
     }
 }
