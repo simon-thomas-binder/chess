@@ -3,7 +3,8 @@ import router from "./router"; // falls du router redirect bei 401 möchtest
 
 const api = axios.create({
     baseURL: import.meta.env.VITE_API_BASE || "/api",
-    withCredentials: false // auf true stellen, wenn später HttpOnly-Cookies verwendet werden
+    withCredentials: false, // auf true stellen, wenn später HttpOnly-Cookies verwendet werden
+    timeout: 10000,
 });
 
 // Request interceptor: attach Bearer if present

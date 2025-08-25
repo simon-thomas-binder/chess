@@ -18,7 +18,9 @@ export default defineConfig({
       // If you use websocket plain ws (not SockJS), you can add:
       '/ws': {
         target: 'ws://localhost:8080',
-        ws: true
+        ws: true,
+        changeOrigin: true,
+        secure: false,
       }
     }
   }
