@@ -73,7 +73,7 @@ public class WsServiceImpl implements WsService{
         message.put("type", "GAME_ENDED");
 
         Map<String, Object> endDetails = new HashMap<>();
-        endDetails.put("winner", winner.name());
+        endDetails.put("winner", winner);
         endDetails.put("endFlag", flag.name());
 
         message.put("details", endDetails);

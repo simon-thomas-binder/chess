@@ -494,11 +494,11 @@ function onRematch(){
   end.open = false;
 }
 function onBack(){
-  // TODO: z.B. Router zurück
-  end.open = false;
+  router.push('/lobby');
 }
 
 import ConfirmModal from "../components/ConfirmModal.vue";
+import router from "../router";
 
 const confirm = reactive({
   open: false,
