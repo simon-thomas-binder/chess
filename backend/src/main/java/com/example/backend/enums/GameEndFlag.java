@@ -5,5 +5,6 @@ public enum GameEndFlag {
     TIMEOUT,
     RESIGNATION,
     STALEMATE,
+    DRAW_AGREEMENT,
     FORFEIT
 }

@@ -3,7 +3,7 @@ create type user_type as enum ('HUMAN','BOT');
 create type game_status as enum ('PENDING','ACTIVE','FINISHED','ABORTED');
 create type piece_type as enum ('KING','QUEEN','ROOK','BISHOP','KNIGHT','PAWN');
 create type move_flag as enum ('NORMAL','CAPTURE','CASTLE_KING','CASTLE_QUEEN','PROMOTION','EN_PASSANT');
-create type game_end_flag as enum ('CHECKMATE','TIMEOUT','RESIGNATION','STALEMATE','FORFEIT');
+create type game_end_flag as enum ('CHECKMATE','TIMEOUT','RESIGNATION','STALEMATE','DRAW_AGREEMENT', 'FORFEIT');
 
 create table app_user (
                           username varchar(255) primary key,

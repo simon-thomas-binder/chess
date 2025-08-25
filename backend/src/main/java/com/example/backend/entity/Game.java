@@ -52,7 +52,7 @@ public class Game {
 
     @Column(name = "end_game_flag", nullable = true)
     @Enumerated(EnumType.STRING)
-    private GameEndFlag winReason;
+    private GameEndFlag endReason;
 
     @Column(name = "end_time", nullable = true, updatable = false)
     private Instant endTime;
@@ -85,8 +85,9 @@ public class Game {
      * @param winner to add (can be null for remi)
      * @return game object
      */
-    public static Game endGame(Game game, Color winner) {
+    public static Game endGame(Game game, GameEndFlag flag, Color winner) {
         game.setStatus(GameStatus.FINISHED);
+        game.setEndReason(flag);
         game.setWinner(winner);
         game.setEndTime(Instant.now());
         return game;

@@ -78,15 +78,65 @@
       <!-- Endscreen Overlay -->
       <div v-if="end.open" class="end-overlay" @click.self="end.open = false">
         <div class="end-card">
-          <h3 class="mb-2">Partie beendet</h3>
-          <p class="mb-1" v-if="end.winner">Sieger: <strong>{{ end.winner }}</strong></p>
-          <p class="text-muted mb-4">Grund: {{ end.endFlag }}</p>
-          <div class="d-flex gap-2">
-            <button class="btn btn-accent" @click="">Revanche</button>
-            <button class="btn btn-muted" @click="">Zurück</button>
+          <!-- Icon + Title -->
+          <div class="end-head">
+      <span class="end-icon" :class="endUi.iconClass" aria-hidden="true">
+        <!-- simple inline SVGs -->
+        <svg v-if="endUi.icon==='trophy'" width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><path d="M6 2h12v3h3v3c0 3.31-2.69 6-6 6h-1v2h3v2H7v-2h3v-2h-1C5.69 14 3 11.31 3 8V5h3V2zm0 3H5v3c0 2.21 1.79 4 4 4h1.17A5.99 5.99 0 0 1 6 7V5zm13 0h-1v2a6 6 0 0 1-4.17 5H15c2.21 0 4-1.79 4-4V5z"/></svg>
+        <svg v-else-if="endUi.icon==='flag'" width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><path d="M4 4h2v16H4zM8 4h8l-1.5 3L20 9h-8l-1.5 3L8 8z"/></svg>
+        <svg v-else-if="endUi.icon==='clock'" width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><path d="M12 1a11 11 0 1 0 0 22 11 11 0 0 0 0-22zm1 6h-2v6l5 3 .997-1.733L13 12.5V7z"/></svg>
+        <svg v-else-if="endUi.icon==='handshake'" width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><path d="M6.5 6l3.5 3 2-2 2 2 3.5-3 3.5 3-5 5-2-2-2 2-5-5z"/></svg>
+        <svg v-else width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="10"/></svg>
+      </span>
+            <div class="end-titles">
+              <h3 class="mb-1">{{ endUi.title }}</h3>
+              <p class="text-muted m-0">{{ endUi.subtitle }}</p>
+            </div>
+          </div>
+
+          <!-- Winner / Draw presentation -->
+          <div v-if="endUi.hasWinner" class="winner-wrap">
+            <div class="winner-avatar" :class="end.winner === 'WHITE' ? 'is-white' : 'is-black'">
+              <img :src="winnerPlayer.avatar" class="avatar-img" />
+              <img class="king-overlay" :src="`/pieces/${(end.winner||'white').toLowerCase()}_king.png`" alt="" />
+            </div>
+            <div class="winner-info">
+              <div class="winner-name">{{ winnerPlayer.name }}</div>
+              <div class="color-pill" :class="end.winner === 'WHITE' ? 'pill-white' : 'pill-black'">
+                {{ end.winner === 'WHITE' ? 'Weiß' : 'Schwarz' }}
+              </div>
+            </div>
+          </div>
+
+          <div v-else class="draw-wrap">
+            <div class="draw-player">
+              <div class="mini-avatar is-white"><img :src="white.avatar" /></div>
+              <div class="mini-name">{{ white.name }}</div>
+            </div>
+            <div class="draw-center">½–½</div>
+            <div class="draw-player">
+              <div class="mini-avatar is-black"><img :src="black.avatar" /></div>
+              <div class="mini-name">{{ black.name }}</div>
+            </div>
+          </div>
+
+          <div class="d-flex gap-2 mt-4 justify-content-center">
+            <button class="btn btn-accent" @click="onRematch">Revanche</button>
+            <button class="btn btn-muted" @click="onBack">Zurück</button>
           </div>
         </div>
       </div>
+
+      <ConfirmModal
+          v-model="confirm.open"
+          :title="confirm.title"
+          :message="confirm.message"
+          :confirmText="confirm.confirmText"
+          :cancelText="confirm.cancelText"
+          :danger="confirm.danger"
+          @confirm="onConfirmOk"
+          @cancel="onConfirmCancel"
+      />
 
     </div>
   </div>
@@ -304,7 +354,20 @@ function onSendChat(){
 }
 
 function onOfferDraw(){ offerDraw(gameId).catch(()=>{}); }
-function onResign(){ resign(gameId).catch(()=>{}); }
+
+async function onResign(){
+  const ok = await askConfirm({
+    title: "Aufgeben?",
+    message: "Bist du sicher, dass du die Partie aufgeben möchtest?",
+    confirmText: "Ja, aufgeben",
+    cancelText: "Weiter spielen",
+    danger: true
+  });
+  if (!ok) return;
+  resign(gameId).catch(e => {
+    toast.error(e?.response?.data?.message || "Aufgeben fehlgeschlagen");
+  });
+}
 
 function formatTime(ms:number){
   const s = Math.floor(ms/1000);
@@ -393,6 +456,83 @@ function handleGameEvent(msg:any){
       // ignore
   }
 }
+
+import { computed } from "vue";
+
+const winnerPlayer = computed(() => {
+  if (end.winner === "WHITE") return white;
+  if (end.winner === "BLACK") return black;
+  return { name: "—", avatar: "/assets/default-avatar.png" } as any;
+});
+
+type EndUi = { title: string; subtitle: string; icon: 'trophy'|'flag'|'clock'|'handshake'|'dot'; iconClass: string; hasWinner: boolean; };
+
+function endText(flag: string, winner: Color | null): EndUi {
+  const w = winner === "WHITE" ? "Weiß" : winner === "BLACK" ? "Schwarz" : null;
+  switch (flag) {
+    case "CHECKMATE":
+      return { title: w ? `${w} gewinnt!` : "Schachmatt", subtitle: "durch Schachmatt", icon: "trophy", iconClass: "ico-win", hasWinner: true };
+    case "TIMEOUT":
+      return { title: w ? `${w} gewinnt!` : "Zeit abgelaufen", subtitle: "Zeitablauf", icon: "clock", iconClass: "ico-time", hasWinner: true };
+    case "RESIGNATION":
+      return { title: w ? `${w} gewinnt!` : "Aufgabe", subtitle: "durch Aufgabe", icon: "flag", iconClass: "ico-flag", hasWinner: true };
+    case "FORFEIT":
+      return { title: w ? `${w} gewinnt!` : "Forfeit", subtitle: "durch Forfait/Regelverstoß", icon: "flag", iconClass: "ico-flag", hasWinner: true };
+    case "STALEMATE":
+      return { title: "Patt", subtitle: "Unentschieden (Pattstellung)", icon: "handshake", iconClass: "ico-draw", hasWinner: false };
+    case "DRAW_AGREEMENT":
+      return { title: "Remis", subtitle: "einvernehmlich", icon: "handshake", iconClass: "ico-draw", hasWinner: false };
+    default:
+      return { title: w ? `${w} gewinnt!` : "Partie beendet", subtitle: flag || "—", icon: "dot", iconClass: "ico-neutral", hasWinner: !!w };
+  }
+}
+
+const endUi = computed(() => endText(end.endFlag, end.winner));
+
+function onRematch(){
+  // TODO: hier API-Call für Revanche o. Route wechseln
+  end.open = false;
+}
+function onBack(){
+  // TODO: z.B. Router zurück
+  end.open = false;
+}
+
+import ConfirmModal from "../components/ConfirmModal.vue";
+
+const confirm = reactive({
+  open: false,
+  title: "Aktion bestätigen",
+  message: "",
+  confirmText: "Bestätigen",
+  cancelText: "Abbrechen",
+  danger: false,
+  _resolve: (v: boolean) => {}
+});
+
+function askConfirm(opts: Partial<typeof confirm>): Promise<boolean> {
+  return new Promise(resolve => {
+    Object.assign(confirm, {
+      title: "Aktion bestätigen",
+      message: "",
+      confirmText: "Bestätigen",
+      cancelText: "Abbrechen",
+      danger: false,
+      ...opts,
+      open: true,
+      _resolve: resolve
+    });
+  });
+}
+function onConfirmOk(){
+  confirm.open = false;
+  confirm._resolve(true);
+}
+function onConfirmCancel(){
+  confirm.open = false;
+  confirm._resolve(false);
+}
+
 </script>
 
 <style scoped>
@@ -478,4 +618,36 @@ function handleGameEvent(msg:any){
   box-shadow: 0 10px 40px rgba(0,0,0,.5);
 }
 .text-muted { color: var(--secondary); }
+
+.end-head { display:flex; align-items:center; gap:.75rem; justify-content:center; margin-bottom: .75rem; }
+.end-icon { width:44px; height:44px; border-radius:12px; display:grid; place-items:center; }
+.end-icon.ico-win { background: linear-gradient(135deg, #2e7d32, #1b5e20); color:#c8f7c5; }
+.end-icon.ico-flag { background: linear-gradient(135deg, #8e24aa, #5e35b1); color:#e6d6ff; }
+.end-icon.ico-time { background: linear-gradient(135deg, #1565c0, #0d47a1); color:#d6e9ff; }
+.end-icon.ico-draw { background: linear-gradient(135deg, #616161, #424242); color:#eee; }
+.end-icon.ico-neutral { background: linear-gradient(135deg, #455a64, #263238); color:#e0f7fa; }
+.end-titles h3 { line-height:1.15; }
+
+.winner-wrap { display:flex; align-items:center; justify-content:center; gap:1rem; margin-top:.5rem; }
+.winner-avatar { position:relative; width:96px; height:96px; border-radius:50%; overflow:hidden; border:2px solid rgba(255,255,255,.1); box-shadow: 0 10px 30px rgba(0,0,0,.35); }
+.winner-avatar.is-white { outline: 3px solid rgba(255,255,255,.85); background: radial-gradient(ellipse at top, #f5f5f5, #cccccc); }
+.winner-avatar.is-black { outline: 3px solid rgba(0,0,0,.85); background: radial-gradient(ellipse at top, #333, #111); }
+.winner-avatar img { width:100%; height:100%; object-fit: cover; opacity:.9; }
+.king-overlay { position:absolute; right:-6px; bottom:-6px; width:42px; height:42px; filter: drop-shadow(0 2px 10px rgba(0,0,0,.6)); }
+
+.winner-info { text-align:left; }
+.winner-name { font-weight:700; font-size:1.1rem; }
+.color-pill { display:inline-block; font-size:.75rem; padding:.25rem .5rem; border-radius:.5rem; margin-top:.25rem; }
+.pill-white { background: rgba(255,255,255,.9); color:#111; border:1px solid rgba(0,0,0,.1); }
+.pill-black { background: rgba(0,0,0,.85); color:#f5f5f5; border:1px solid rgba(255,255,255,.08); }
+
+.draw-wrap { display:grid; grid-template-columns: 1fr auto 1fr; align-items:center; gap:1rem; margin-top:.5rem; }
+.draw-player { text-align:center; }
+.mini-avatar { width:72px; height:72px; border-radius:50%; overflow:hidden; border:2px solid rgba(255,255,255,.08); margin:0 auto .25rem; }
+.mini-avatar.is-white { outline: 2px solid rgba(255,255,255,.75); }
+.mini-avatar.is-black { outline: 2px solid rgba(0,0,0,.75); }
+.mini-avatar img { width:100%; height:100%; object-fit:cover; }
+.mini-name { font-size:.9rem; opacity:.9; }
+.draw-center { font-weight:800; font-size:1.25rem; opacity:.9; }
+
 </style>

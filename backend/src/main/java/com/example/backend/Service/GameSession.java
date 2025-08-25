@@ -12,6 +12,7 @@ import com.example.backend.enums.Color;
 import com.example.backend.enums.GameEndFlag;
 import com.example.backend.enums.GameStatus;
 import com.example.backend.exception.NotAuthorizedException;
+import com.example.backend.exception.ValidationException;
 import com.example.backend.repository.GameParticipantRepository;
 import com.example.backend.repository.GameRepository;
 import com.example.backend.repository.MoveRepository;
@@ -121,7 +122,7 @@ public class GameSession {
             return null;
         }
 
-        return piece.getMoves(board);
+        return piece.getMoves(board, true);
     }
 
     public synchronized void playMove(MoveDto move, String username) {
@@ -157,11 +158,8 @@ public class GameSession {
         ply++;
         player.setRemainingTime(player.getRemainingTime() + board.increment());
 
-        if (turn == Color.WHITE) {
-            turn = Color.BLACK;
-        } else {
-            turn = Color.WHITE;
-        }
+        turn = Color.getOtherColor(turn);
+        gameEndCheck();
 
         timer(players.stream().filter(p -> p.getColor().equals(turn)).findFirst().orElseThrow().getRemainingTime());
     }
@@ -172,6 +170,9 @@ public class GameSession {
      * @param username of the player surrendering
      */
     public void resign(String username) {
+        if (gameOver) {
+            throw new ValidationException("This game has already ended");
+        }
         Player player = players.stream().filter(p -> p.getUsername().equals(username)).findFirst().orElse(null);
         if (player == null) {
             throw new NotAuthorizedException("You are not player in this game");
@@ -179,9 +180,9 @@ public class GameSession {
         players.remove(player);
         if (players.size() == 1) {
             Color winner = players.getFirst().getColor();
-            safe(Game.endGame(game, winner));
+            safe(Game.endGame(game, GameEndFlag.RESIGNATION, winner));
             gameOver = true;
-            wsService.sendGameEnded(GameEndFlag.TIMEOUT, winner);
+            wsService.sendGameEnded(GameEndFlag.RESIGNATION, winner);
         }
     }
 
@@ -206,9 +207,23 @@ public class GameSession {
         players.remove(players.stream().filter(p -> p.getColor().equals(color)).findFirst().orElse(null));
         if (players.size() == 1) {
             Color winner = players.getFirst().getColor();
-            safe(Game.endGame(game, winner));
+            safe(Game.endGame(game, GameEndFlag.TIMEOUT, winner));
             gameOver = true;
             wsService.sendGameEnded(GameEndFlag.TIMEOUT, winner);
+        }
+    }
+
+    private void gameEndCheck() {
+        if (board.getAllMoves(turn).isEmpty()) {
+            gameOver = true;
+            if (board.isInCheck(turn)) {
+                Color winner = Color.getOtherColor(turn);
+                safe(Game.endGame(game, GameEndFlag.CHECKMATE, winner));
+                wsService.sendGameEnded(GameEndFlag.CHECKMATE, winner);
+            } else {
+                safe(Game.endGame(game, GameEndFlag.STALEMATE, null));
+                wsService.sendGameEnded(GameEndFlag.STALEMATE, null);
+            }
         }
     }
 }

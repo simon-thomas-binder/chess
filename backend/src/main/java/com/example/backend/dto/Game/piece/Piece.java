@@ -8,6 +8,7 @@ import com.example.backend.enums.MoveFlag;
 import com.example.backend.enums.PieceType;
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
+import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -31,6 +32,7 @@ import java.util.Objects;
         @JsonSubTypes.Type(value = Bishop.class,name = "BISHOP"),
         @JsonSubTypes.Type(value = Knight.class,name = "KNIGHT")
 })
+@AllArgsConstructor
 public abstract class Piece {
 
     protected PositionDto position;
@@ -44,13 +46,41 @@ public abstract class Piece {
      * @param board where to search for moves
      * @return a Collection of all valid moves
      */
-    public abstract Collection<MoveDto> getMoves(Chessboard board);
+    public abstract Collection<MoveDto> getMoves(Chessboard board, boolean validateForCheck);
 
     /**
      * Massages this piece that it has been moved
      */
     public void massageMove() {
         hasMoved = true;
+    }
+
+    /**
+     * Checks for potential invalid moves when it will result in a position in check
+     *
+     * @param moves list
+     * @param board where its played
+     * @return all valid moves
+     */
+    public List<MoveDto> checkMoves(List<MoveDto> moves, Chessboard board, boolean validateForCheck) {
+        if (!validateForCheck) {
+            return moves;
+        }
+        Color color = moves.isEmpty() ? null : moves.getFirst().piece().getColor();
+        if (color == null) {
+            return new ArrayList<>();
+        }
+
+        List<MoveDto> validMoves = new ArrayList<>();
+        for (MoveDto move : moves) {
+            Chessboard futureBoard = board.clone();
+            futureBoard.move(move);
+            if (!futureBoard.isInCheck(color)) {
+                validMoves.add(move);
+            }
+        }
+
+        return validMoves;
     }
 
     /**
@@ -171,4 +201,6 @@ public abstract class Piece {
     public int hashCode() {
         return Objects.hash(position, color, type);
     }
+
+    public abstract Piece clone();
 }

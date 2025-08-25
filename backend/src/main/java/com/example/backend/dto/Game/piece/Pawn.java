@@ -9,20 +9,18 @@ import com.example.backend.enums.PieceType;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.List;
 
 public class Pawn extends Piece {
 
-    public Pawn(PositionDto position, Color color, PieceType type) {
-        this.position = position;
-        this.color = color;
-        this.type = type;
-        this.hasMoved = false;
+    public Pawn(PositionDto position, Color color, PieceType type, boolean hasMoved) {
+        super(position, color, type, hasMoved);
     }
 
     @Override
-    public Collection<MoveDto> getMoves(Chessboard board) {
+    public Collection<MoveDto> getMoves(Chessboard board, boolean validateForCheck) {
         int dir;
-        Collection<MoveDto> moves = new ArrayList<>();
+        List<MoveDto> moves = new ArrayList<>();
 
         if (this.color == Color.BLACK) {
             dir = -1;
@@ -51,6 +49,11 @@ public class Pawn extends Piece {
                     this, MoveFlag.NORMAL, null));
         }
 
-        return moves;
+        return checkMoves(moves, board, validateForCheck);
+    }
+
+    @Override
+    public Piece clone() {
+        return new Pawn(position, color, type, hasMoved);
     }
 }
