@@ -35,4 +35,11 @@ public interface GameSessionService {
      * @param moveDto move to play
      */
     void playMove(long gameId, MoveDto moveDto);
+
+    /**
+     * Resigns at given game
+     *
+     * @param gameId to surrender by
+     */
+    void resign(long gameId);
 }

@@ -17,9 +17,9 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.Collection;
 
 @RestController
-@RequestMapping("/api/chess/move")
+@RequestMapping("/api/chess/session")
 @RequiredArgsConstructor
-public class MoveEndpoint {
+public class SessionEndpoint {
 
     private final GameSessionService gameSessionService;
 
@@ -34,4 +34,14 @@ public class MoveEndpoint {
         gameSessionService.playMove(id, moveDto);
         return new ResponseEntity<>(HttpStatus.OK);
     }
+
+    @PostMapping("/{id}/resign")
+    public ResponseEntity<Void> resign(@PathVariable long id) {
+        gameSessionService.resign(id);
+        return new ResponseEntity<>(HttpStatus.OK);
+    }
+
+    //TODO: Remi endpoint
+
+    //TODO: Chat endpoint
 }

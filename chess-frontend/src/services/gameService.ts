@@ -24,12 +24,12 @@ export async function getMoves(id: number | undefined, pos: Position) : Promise<
         x: pos.x,
         y: pos.y
     };
-    const response = await api.get(`/chess/move/` + id, {params})
+    const response = await api.get(`/chess/session/` + id, {params})
     return response.data;
 }
 
 export async function sendMove(gameId: string|number, move: Move) {
-    return api.post(`/chess/move/${gameId}`, move);
+    return api.post(`/chess/session/${gameId}`, move);
 }
 
 export async function offerDraw(gameId: string|number) {
@@ -37,7 +37,7 @@ export async function offerDraw(gameId: string|number) {
 }
 
 export async function resign(gameId: string|number) {
-    return api.post(`/games/${gameId}/resign`);
+    return api.post(`/chess/session/${gameId}/resign`);
 }
 
 export async function sendChat(gameId: string|number, text: string) {

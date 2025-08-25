@@ -166,6 +166,25 @@ public class GameSession {
         timer(players.stream().filter(p -> p.getColor().equals(turn)).findFirst().orElseThrow().getRemainingTime());
     }
 
+    /**
+     * Resigns the game
+     *
+     * @param username of the player surrendering
+     */
+    public void resign(String username) {
+        Player player = players.stream().filter(p -> p.getUsername().equals(username)).findFirst().orElse(null);
+        if (player == null) {
+            throw new NotAuthorizedException("You are not player in this game");
+        }
+        players.remove(player);
+        if (players.size() == 1) {
+            Color winner = players.getFirst().getColor();
+            safe(Game.endGame(game, winner));
+            gameOver = true;
+            wsService.sendGameEnded(GameEndFlag.TIMEOUT, winner);
+        }
+    }
+
     private void safe(Game game) {
         this.game = gameRepository.save(game);
     }
@@ -188,6 +207,7 @@ public class GameSession {
         if (players.size() == 1) {
             Color winner = players.getFirst().getColor();
             safe(Game.endGame(game, winner));
+            gameOver = true;
             wsService.sendGameEnded(GameEndFlag.TIMEOUT, winner);
         }
     }

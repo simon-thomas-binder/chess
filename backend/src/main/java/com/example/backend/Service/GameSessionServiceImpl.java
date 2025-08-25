@@ -59,4 +59,14 @@ public class GameSessionServiceImpl implements GameSessionService {
 
         session.playMove(moveDto, userService.getUser().getUsername());
     }
+
+    @Override
+    public void resign(long gameId) {
+        GameSession session = gameSessions.get(gameId);
+        if (session == null) {
+            throw new ConflictException("Game session does not exist");
+        }
+
+        session.resign(userService.getUser().getUsername());
+    }
 }
