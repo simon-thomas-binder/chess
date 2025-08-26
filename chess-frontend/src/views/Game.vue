@@ -63,9 +63,10 @@
       <div class="col-12 col-xl-2">
         <div class="card--glass p-3 chat">
           <h6 class="fw-semibold mb-2">Chat</h6>
-          <div class="chat-messages">
-            <div v-for="m in chat" :key="m.id" class="chat-line">
-              <strong>{{ m.sender }}:</strong> {{ m.text }}
+          <div class="chat-messages" ref="chatContainer">
+            <div v-for="m in chat" :key="m.id" class="chat-line" :class="m.colorClass" :style="m.style">
+              <small class="text-muted me-1">{{ m.timeFormatted }}</small>
+              <strong>{{ m.sender }}:</strong>&nbsp;<span>{{ m.text }}</span>
             </div>
           </div>
           <div class="input-group mt-2">
@@ -143,7 +144,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, onBeforeUnmount, reactive, ref } from "vue";
+import { onMounted, onBeforeUnmount, reactive, ref, nextTick } from "vue";
 import { useRoute } from "vue-router";
 import { useWs } from "../composables/ws";
 import {sendChat, offerDraw, resign, getMoves, sendMove} from "../services/gameService";
@@ -168,13 +169,15 @@ const highlightedMoves = ref<Record<string, Move>>({});
 const turn = ref<Color>("WHITE");
 
 // players & clocks (demo fallback)
-const white = reactive({ name: "Weiß", avatar: "/assets/default-avatar.png", time: 300000 });
-const black = reactive({ name: "Schwarz", avatar: "/assets/default-avatar.png", time: 300000 });
+const white = reactive({ name: "Weiß", avatar: "/assets/default-avatar.png", time: match.value?.chessboard.initial_time ?? 0 });
+const black = reactive({ name: "Schwarz", avatar: "/assets/default-avatar.png", time: match.value?.chessboard.initial_time ?? 0 });
 
 // move list + chat
 const moves = ref<any[]>([]);
-const chat = ref<{id:number; sender:string; text:string}[]>([]);
+const chat = ref<{ id: number; sender: string; text: string; timeFormatted?: string; colorClass?: string; style?: string }[]>([]);
 const chatInput = ref("");
+// scroll container für Chat
+const chatContainer = ref<HTMLElement | null>(null);
 
 // ----- helpers
 function keyOf(row:number,col:number){ return `${row}:${col}`; }
@@ -345,6 +348,29 @@ function toGridKeyFromChess(pos: Position) {
   //   highlights.value = [];
   // });
 
+function formatChatTime(time: any) {
+  if (!time) return "";
+  try {
+    const d = (typeof time === "string" || typeof time === "number") ? new Date(time) : time instanceof Date ? time : new Date(String(time));
+    if (isNaN(d.getTime())) return "";
+    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  } catch {
+    return "";
+  }
+}
+
+function mapColorToMeta(color: any): { cls: string; style?: string } {
+  if (!color) return { cls: "" };
+  const s = String(color).toUpperCase();
+  // Backend kann Color enum liefern (WHITE/BLACK) — fallback Klassen dafür
+  if (s === "WHITE" || s === "WEISS") return { cls: "is-white" };
+  if (s === "BLACK" || s === "SCHWARZ") return { cls: "is-black" };
+  // Falls Backend liefert ein CSS color (#fff / rgb(...)), benutze inline style
+  if (/^(#|rgb|hsl)/i.test(String(color))) return { cls: "", style: `color: ${color}` };
+  return { cls: "" };
+}
+
+
 function onSendChat(){
   console.log(match.value)
   const text = chatInput.value.trim();
@@ -407,7 +433,7 @@ onBeforeUnmount(() => {
 function handleGameEvent(msg:any){
   switch (msg.type) {
     case "MOVE_APPLIED": {
-      const move: Move = msg.move;
+      const move: Move = msg.details.move;
       console.log(move)
 
       const fromCellIndex = cells.value.findIndex(cell => cell.key === keyOf(switchPos(move.from.y), move.from.x));
@@ -423,14 +449,44 @@ function handleGameEvent(msg:any){
       }
 
       turn.value = (turn.value === "WHITE") ? "BLACK" : "WHITE";
-      syncClockFromWs(msg.remainingTime, turn.value );
+      syncClockFromWs(msg.details.remainingTime, turn.value );
       clearHighlights();
       console.log("Moved played")
       break;
     }
     case "CHAT": {
-      // payload: { id, sender, text }
-      chat.value.push(msg.payload);
+      // Backend: message may come in msg.details (per your backend snippet)
+      // but be defensive: also handle legacy `payload` or different field names.
+      const details = msg.details ?? msg.payload ?? {};
+      const text = details.msg ?? details.text ?? "";
+      const sender = details.sender ?? details.from ?? details.name ?? "—";
+      const timeRaw = details.time ?? new Date().toISOString();
+      const color = details.color ?? null;
+
+      const timeFormatted = formatChatTime(timeRaw);
+      const colorMeta = mapColorToMeta(color);
+
+      const item = {
+        id: Date.now() + Math.floor(Math.random() * 1000),
+        sender,
+        text,
+        timeFormatted,
+        colorClass: colorMeta.cls,
+        style: colorMeta.style,
+      };
+
+      chat.value.push(item);
+
+      // Auto-scroll to bottom after DOM updated
+      nextTick(() => {
+        try {
+          if (chatContainer.value) {
+            chatContainer.value.scrollTop = chatContainer.value.scrollHeight;
+          }
+        } catch (e) {
+          // ignore scroll errors
+        }
+      });
       break;
     }
     case "GAME_ENDED": {
@@ -439,12 +495,6 @@ function handleGameEvent(msg:any){
       end.winner = (winner === "WHITE" || winner === "BLACK") ? winner : null;
       end.endFlag = typeof endFlag === "string" ? endFlag : "UNSPECIFIED";
       stopClock();
-      break;
-    }
-    case "CLOCK_SYNC": {
-      const { WHITE, BLACK } = msg.payload || {};
-      if (typeof WHITE === "number") white.time = WHITE;
-      if (typeof BLACK === "number") black.time = BLACK;
       break;
     }
     case "GAME_OVER": {
@@ -649,5 +699,16 @@ function onConfirmCancel(){
 .mini-avatar img { width:100%; height:100%; object-fit:cover; }
 .mini-name { font-size:.9rem; opacity:.9; }
 .draw-center { font-weight:800; font-size:1.25rem; opacity:.9; }
+
+.chat-line {
+  margin-bottom: 6px;
+  display: block;
+  line-height: 1.2;
+  padding: 2px 6px;
+  border-radius: 6px;
+}
+.chat-line.is-white { background: rgba(255,255,255,0.06); color: #000; }
+.chat-line.is-black { background: rgba(0,0,0,0.12); color: #fff; }
+
 
 </style>

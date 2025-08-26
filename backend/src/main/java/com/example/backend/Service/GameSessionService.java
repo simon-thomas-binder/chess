@@ -27,7 +27,6 @@ public interface GameSessionService {
      */
     Collection<MoveDto> getMoves(long gameId, PositionDto pos);
 
-
     /**
      * Play move
      *
@@ -42,4 +41,12 @@ public interface GameSessionService {
      * @param gameId to surrender by
      */
     void resign(long gameId);
+
+    /**
+     * Sends a chat message on given game
+     *
+     * @param gameId of the game
+     * @param msg to send
+     */
+    void msg(long gameId, String msg);
 }

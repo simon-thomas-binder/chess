@@ -43,5 +43,9 @@ public class SessionEndpoint {
 
     //TODO: Remi endpoint
 
-    //TODO: Chat endpoint
+    @PostMapping("/{id}/msg")
+    public ResponseEntity<Void> msg(@PathVariable long id, @RequestBody String msg) {
+        gameSessionService.msg(id, msg);
+        return new ResponseEntity<>(HttpStatus.OK);
+    }
 }
