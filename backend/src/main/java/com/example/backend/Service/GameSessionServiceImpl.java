@@ -59,6 +59,7 @@ public class GameSessionServiceImpl implements GameSessionService {
 
     @Override
     public void msg(long gameId, String msg) {
+        log.info("Message received: {}", msg);
         getGameSession(gameId).msg(msg, userService.getUser().getUsername(), chatMessageRepository);
     }
 

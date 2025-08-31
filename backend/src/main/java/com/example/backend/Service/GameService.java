@@ -26,13 +26,24 @@ public interface GameService {
      */
     void declineGame(long gameId);
 
+    /**
+     * Sets this user in the queue for a chess game
+     *
+     * @param chessboard type of game to be queued for
+     */
     void queueGame(Chessboard chessboard);
 
+    /**
+     * Dequeues this User
+     */
     void dequeueGame();
 
+    //TODO
     void quitGame(long gameId);
 
+    //TODO
     Object viewGame(long gameId);
 
+    //TODO
     void deleteGame(long gameId);
 }

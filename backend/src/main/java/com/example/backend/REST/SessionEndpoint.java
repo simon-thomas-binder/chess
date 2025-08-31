@@ -3,6 +3,7 @@ package com.example.backend.REST;
 import com.example.backend.Service.GameSessionService;
 import com.example.backend.dto.Game.MoveDto;
 import com.example.backend.dto.Game.PositionDto;
+import com.example.backend.dto.Game.TextDto;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -44,8 +45,8 @@ public class SessionEndpoint {
     //TODO: Remi endpoint
 
     @PostMapping("/{id}/msg")
-    public ResponseEntity<Void> msg(@PathVariable long id, @RequestBody String msg) {
-        gameSessionService.msg(id, msg);
+    public ResponseEntity<Void> msg(@PathVariable long id, @RequestBody TextDto msg) {
+        gameSessionService.msg(id, msg.text());
         return new ResponseEntity<>(HttpStatus.OK);
     }
 }

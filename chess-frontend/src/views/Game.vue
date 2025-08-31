@@ -1,7 +1,8 @@
 <template>
   <div class="container-xxl py-4">
     <div class="row g-4">
-      <!-- Links: Spielerinfos -->
+
+      <!-- Left section: game infos -->
       <div class="col-12 col-xl-2">
         <div class="card--glass p-3 text-center mb-3">
           <div class="avatar-box mb-2"><img :src="white.avatar" class="avatar-img" /></div>
@@ -25,7 +26,7 @@
         </div>
       </div>
 
-      <!-- Mitte: Board -->
+      <!-- Center section: board -->
       <div class="col-12 col-xl-8 d-flex flex-column">
         <div
             class="board card--glass p-2"
@@ -43,6 +44,7 @@
                 :src="pieceSprite(cell.piece)"
                 class="piece"
                 draggable="false"
+                :alt="cell.piece.color.toLowerCase() + ' ' +  cell.piece.type.toLowerCase()"
             />
           </div>
         </div>
@@ -59,14 +61,14 @@
         </div>
       </div>
 
-      <!-- Rechts: Chat -->
+      <!-- Right section: Chat -->
       <div class="col-12 col-xl-2">
         <div class="card--glass p-3 chat">
           <h6 class="fw-semibold mb-2">Chat</h6>
           <div class="chat-messages" ref="chatContainer">
-            <div v-for="m in chat" :key="m.id" class="chat-line" :class="m.colorClass" :style="m.style">
+            <div v-for="m in chat" :key="m.id" class="chat-line" :class="m.color">
               <small class="text-muted me-1">{{ m.timeFormatted }}</small>
-              <strong>{{ m.sender }}:</strong>&nbsp;<span>{{ m.text }}</span>
+              <strong>{{ m.color }}:</strong>&nbsp;<span>{{ m.text }}</span>
             </div>
           </div>
           <div class="input-group mt-2">
@@ -76,7 +78,7 @@
         </div>
       </div>
 
-      <!-- Endscreen Overlay -->
+      <!-- End-modal Overlay -->
       <div v-if="end.open" class="end-overlay" @click.self="end.open = false">
         <div class="end-card">
           <!-- Icon + Title -->
@@ -174,18 +176,10 @@ const black = reactive({ name: "Schwarz", avatar: "/assets/default-avatar.png", 
 
 // move list + chat
 const moves = ref<any[]>([]);
-const chat = ref<{ id: number; sender: string; text: string; timeFormatted?: string; colorClass?: string; style?: string }[]>([]);
-const chatInput = ref("");
-// scroll container für Chat
-const chatContainer = ref<HTMLElement | null>(null);
 
 // ----- helpers
 function keyOf(row:number,col:number){ return `${row}:${col}`; }
 function pieceAt(x:number,y:number){ return match.value?.chessboard.pieces.find(p=>p.position.x===x && p.position.y===y) || null; }
-
-// --- Board sizing ---
-const boardWrap = ref<HTMLElement | null>(null);
-let resizeObs: ResizeObserver | null = null;
 
 const end = reactive<{ open: boolean; winner: Color | null; endFlag: string }>({
   open: false,
@@ -193,23 +187,33 @@ const end = reactive<{ open: boolean; winner: Color | null; endFlag: string }>({
   endFlag: "",
 });
 
-let ticking = false;
+// --------------------------------------------------------------------------------------------
+
+
+// ===============================
+// Section: Clock Functionality
+// ===============================
+
+let ticking: boolean = false;
+let lastTimestamp = 0;
+//Request Animation Frame ID
 let rafId = 0;
-let lastTs = 0;
 
 function startClock() {
   if (ticking) return;
   ticking = true;
-  lastTs = performance.now();
+  lastTimestamp = performance.now();
   rafId = requestAnimationFrame(stepClock);
 }
+
 function stopClock() {
   ticking = false;
   cancelAnimationFrame(rafId);
 }
+
 function stepClock(ts: number) {
-  const dt = ts - lastTs;
-  lastTs = ts;
+  const dt = ts - lastTimestamp;
+  lastTimestamp = ts;
   if (turn.value === "WHITE") white.time = Math.max(0, white.time - dt);
   else if (turn.value === "BLACK") black.time = Math.max(0, black.time - dt);
   if (ticking && !end.open && white.time > 0 && black.time > 0) {
@@ -217,17 +221,19 @@ function stepClock(ts: number) {
   }
 }
 
-function syncClockFromWs(remaining?: Record<string, number>, nextTurn?: Color) {
+function syncClockFromWs(remaining?: Record<string, number>) {
+  stopClock();
   if (remaining) {
     const w = (remaining as any).white ?? (remaining as any).WHITE ?? (remaining as any).White;
     const b = (remaining as any).black ?? (remaining as any).BLACK ?? (remaining as any).Black;
     if (typeof w === "number") white.time = w;
     if (typeof b === "number") black.time = b;
   }
-  if (nextTurn === "WHITE" || nextTurn === "BLACK") turn.value = nextTurn;
-  stopClock();
   if (!end.open) startClock();
 }
+
+// --------------------------------------------------------------------------------------------
+
 
 function rebuildCells() {
   const arr:any[] = [];
@@ -257,8 +263,9 @@ function clearHighlights() {
   selected.value = null;
 }
 
-function pieceSprite(p:Piece){
-  return `/pieces/${p.color.toLowerCase()}_${p.type}.png`;
+function pieceSprite(p:Piece): string {
+  console.log("/assets/pieces/" + p.color.toLowerCase() + "_" + p.type.toLowerCase() + ".svg")
+  return `/assets/pieces/${p.color.toLowerCase()}_${p.type.toLowerCase()}.svg`;
 }
 
 async function onCellClick(cell: any) {
@@ -332,53 +339,6 @@ function toGridKeyFromChess(pos: Position) {
   return keyOf(row, col);
 }
 
-/*function toGridCoords(pos: Position) {
-  return {
-    row: (match.value?.chessboard?.height ?? 0) - 1 - pos.y,
-    col: pos.x,
-  };
-}*/
-
-
-  // second click -> try move via HTTP
-  // sendMove(gameId, move).catch(e => {
-  //   toast.error(e?.response?.data?.message || "Illegaler Zug");
-  // }).finally(() => {
-  //   selected.value = null;
-  //   highlights.value = [];
-  // });
-
-function formatChatTime(time: any) {
-  if (!time) return "";
-  try {
-    const d = (typeof time === "string" || typeof time === "number") ? new Date(time) : time instanceof Date ? time : new Date(String(time));
-    if (isNaN(d.getTime())) return "";
-    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  } catch {
-    return "";
-  }
-}
-
-function mapColorToMeta(color: any): { cls: string; style?: string } {
-  if (!color) return { cls: "" };
-  const s = String(color).toUpperCase();
-  // Backend kann Color enum liefern (WHITE/BLACK) — fallback Klassen dafür
-  if (s === "WHITE" || s === "WEISS") return { cls: "is-white" };
-  if (s === "BLACK" || s === "SCHWARZ") return { cls: "is-black" };
-  // Falls Backend liefert ein CSS color (#fff / rgb(...)), benutze inline style
-  if (/^(#|rgb|hsl)/i.test(String(color))) return { cls: "", style: `color: ${color}` };
-  return { cls: "" };
-}
-
-
-function onSendChat(){
-  console.log(match.value)
-  const text = chatInput.value.trim();
-  if (!text) return;
-  sendChat(gameId, text).catch(()=>{}); // Errors hier sind nicht kritisch
-  chatInput.value = "";
-}
-
 function onOfferDraw(){ offerDraw(gameId).catch(()=>{}); }
 
 async function onResign(){
@@ -395,12 +355,49 @@ async function onResign(){
   });
 }
 
+// --------------------------------------------------------------------------------------------
+
+// ==============================
+// Section: Chat functionality
+// ==============================
+
+const chat = ref<{ id: number; text: string; timeFormatted?: string; color?: Color }[]>([]);
+const chatInput = ref("");
+// scroll container für Chat
+const chatContainer = ref<HTMLElement | null>(null);
+
+function onSendChat(){
+  console.log(match.value)
+  const text = chatInput.value.trim();
+  if (!text) return;
+  console.log("Text: " + text)
+  sendChat(gameId, text).catch(()=>{});
+  chatInput.value = "";
+}
+
 function formatTime(ms:number){
   const s = Math.floor(ms/1000);
   const m = Math.floor(s/60);
   const ss = (s%60).toString().padStart(2,"0");
   return `${m}:${ss}`;
 }
+
+function formatChatTime(time: any) {
+  if (!time) return "";
+  try {
+    const d = (typeof time === "string" || typeof time === "number") ? new Date(time) : time instanceof Date ? time : new Date(String(time));
+    if (isNaN(d.getTime())) return "";
+    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  } catch {
+    return "";
+  }
+}
+
+// --------------------------------------------------------------------------------------------
+
+// ====================
+// Section: Mounting
+// ====================
 
 // ----- WS handling: subscribe topic/game/{gameId}
 let offGameHandler: (()=>void)|null = null;
@@ -418,20 +415,18 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   offGameHandler?.();
   ws.unsubscribeGame(gameId);
-});
-
-onBeforeUnmount(() => {
-  offGameHandler?.();
-  ws.unsubscribeGame(gameId);
-  if (resizeObs && boardWrap.value?.parentElement) {
-    //resizeObs.unobserve(boardWrap.value.parentElement);
-  }
   stopClock();
 });
 
+// --------------------------------------------------------------------------------------------
+
+// ====================================
+// Section: Web socket event handler
+// ====================================
 
 function handleGameEvent(msg:any){
   switch (msg.type) {
+
     case "MOVE_APPLIED": {
       const move: Move = msg.details.move;
       console.log(move)
@@ -444,35 +439,30 @@ function handleGameEvent(msg:any){
       console.log("Piece: " + piece)
 
       if (fromCellIndex !== -1 && toCellIndex !== -1) {
-        cells.value[fromCellIndex] = { ...cells.value[fromCellIndex], piece: null };
-        cells.value[toCellIndex] = { ...cells.value[toCellIndex], piece: piece };
+        cells.value[fromCellIndex].piece = null;
+        cells.value[toCellIndex].piece = piece;
       }
 
       turn.value = (turn.value === "WHITE") ? "BLACK" : "WHITE";
-      syncClockFromWs(msg.details.remainingTime, turn.value );
+      syncClockFromWs(msg.details.remainingTime);
       clearHighlights();
       console.log("Moved played")
       break;
     }
+
     case "CHAT": {
-      // Backend: message may come in msg.details (per your backend snippet)
-      // but be defensive: also handle legacy `payload` or different field names.
-      const details = msg.details ?? msg.payload ?? {};
-      const text = details.msg ?? details.text ?? "";
-      const sender = details.sender ?? details.from ?? details.name ?? "—";
-      const timeRaw = details.time ?? new Date().toISOString();
-      const color = details.color ?? null;
+      const details = msg.details;
+      const text = details.msg;
+      const timeRaw = details.time;
+      const color = details.color;
 
       const timeFormatted = formatChatTime(timeRaw);
-      const colorMeta = mapColorToMeta(color);
 
       const item = {
         id: Date.now() + Math.floor(Math.random() * 1000),
-        sender,
         text,
         timeFormatted,
-        colorClass: colorMeta.cls,
-        style: colorMeta.style,
+        color: color,
       };
 
       chat.value.push(item);
@@ -506,6 +496,12 @@ function handleGameEvent(msg:any){
       // ignore
   }
 }
+
+// --------------------------------------------------------------------------------------------
+
+// ===========================
+// Section: End game pop up
+// ===========================
 
 import { computed } from "vue";
 
@@ -582,6 +578,8 @@ function onConfirmCancel(){
   confirm.open = false;
   confirm._resolve(false);
 }
+
+// --------------------------------------------------------------------------------------------
 
 </script>
 
