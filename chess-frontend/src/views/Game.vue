@@ -7,6 +7,7 @@
         <div class="card--glass p-3 text-center mb-3">
           <div class="avatar-box mb-2"><img :src="white.avatar" class="avatar-img" /></div>
           <h6 class="fw-semibold">{{ white.name }}</h6>
+          <h6 class="fw-semibold">{{ whitePlayer?.displayname }}</h6>
           <div class="timer" :class="{ active: turn === 'WHITE', low: white.time <= 10000 }">
             {{ formatTime(white.time) }}
           </div>
@@ -14,6 +15,7 @@
         <div class="card--glass p-3 text-center">
           <div class="avatar-box mb-2"><img :src="black.avatar" class="avatar-img" /></div>
           <h6 class="fw-semibold">{{ black.name }}</h6>
+          <h6 class="fw-semibold">{{ blackPlayer?.displayname }}</h6>
           <div class="timer" :class="{ active: turn === 'BLACK', low: black.time <= 10000 }">
             {{ formatTime(black.time) }}
           </div>
@@ -36,7 +38,7 @@
               v-for="cell in cells"
               :key="cell.key"
               class="cell"
-              :class="{ dark: cell.dark, sel: isSelected(cell), hl: isHighlighted(cell) }"
+              :class="{ dark: cell.dark, sel: cell.sel, hl: cell.hl }"
               @click="onCellClick(cell)"
           >
             <img
@@ -67,13 +69,18 @@
           <h6 class="fw-semibold mb-2">Chat</h6>
           <div class="chat-messages" ref="chatContainer">
             <div v-for="m in chat" :key="m.id" class="chat-line" :class="m.color">
-              <small class="text-muted me-1">{{ m.timeFormatted }}</small>
-              <strong>{{ m.color }}:</strong>&nbsp;<span>{{ m.text }}</span>
+              <div>
+                <small class="text-muted me-1">{{ m.timeFormatted }}</small>
+                <strong>{{ m.color }}:</strong>
+              </div>
+              <div>
+                <span>{{ m.text }}</span>
+              </div>
             </div>
           </div>
-          <div class="input-group mt-2">
-            <input v-model="chatInput" class="form-control" @keyup.enter="onSendChat" placeholder="Nachricht…" />
-            <button class="btn btn-accent" @click="onSendChat">Senden</button>
+          <div class="mt-2">
+            <textarea v-model="chatInput" class="form-control input-group" @keyup.enter="onSendChat" placeholder="Nachricht…" rows="5"></textarea>
+            <button class="btn btn-accent input-group" @click="onSendChat">Senden</button>
           </div>
         </div>
       </div>
@@ -146,13 +153,16 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, onBeforeUnmount, reactive, ref, nextTick } from "vue";
-import { useRoute } from "vue-router";
-import { useWs } from "../composables/ws";
-import {sendChat, offerDraw, resign, getMoves, sendMove} from "../services/gameService";
-import { toast } from "../composables/toast";
-import type {Color, Move, Piece, Position} from "../models/chess.ts";
-import { useMatchStore } from "../stores/matchStore";
+import {computed, nextTick, onBeforeUnmount, onMounted, reactive, ref} from "vue";
+import {useRoute} from "vue-router";
+import {useWs} from "../composables/ws";
+import {getMoves, offerDraw, resign, sendChat, sendMove} from "../services/gameService";
+import {toast} from "../composables/toast";
+import {type Cell, type Chessboard, type Color, type Move, type Piece, positionToString} from "../models/chess.ts";
+import {useMatchStore} from "../stores/matchStore";
+import ConfirmModal from "../components/ConfirmModal.vue";
+import router from "../router";
+import {getUserWithUsername, type User} from "../services/authService.ts";
 
 // ----- Routing / IDs
 const route = useRoute();
@@ -164,28 +174,124 @@ const ws = useWs();
 const matchStore = useMatchStore();
 const match = ref(matchStore.current);
 
-const cells = ref<any[]>([]);
-const selected = ref<{x:number;y:number}|null>(null);
-const highlights = ref<string[]>([]);
-const highlightedMoves = ref<Record<string, Move>>({});
 const turn = ref<Color>("WHITE");
+const moves = ref<any[]>([]);
 
 // players & clocks (demo fallback)
 const white = reactive({ name: "Weiß", avatar: "/assets/default-avatar.png", time: match.value?.chessboard.initial_time ?? 0 });
 const black = reactive({ name: "Schwarz", avatar: "/assets/default-avatar.png", time: match.value?.chessboard.initial_time ?? 0 });
 
-// move list + chat
-const moves = ref<any[]>([]);
-
 // ----- helpers
-function keyOf(row:number,col:number){ return `${row}:${col}`; }
-function pieceAt(x:number,y:number){ return match.value?.chessboard.pieces.find(p=>p.position.x===x && p.position.y===y) || null; }
+function keyOf(x: number, y: number): string { return `${x}:${y}`; }
+function pieceAt(x: number,y: number): Piece | null { return match.value?.chessboard.pieces.find(p=>p.position.x===x && p.position.y===y) || null; }
+function cellAt(x: number, y: number): Cell {
+  const cell = cells.value.find((cell) => cell.x === x && cell.y === y);
+  if (!cell) {
+    throw new Error(`Cell not found at position (${x}, ${y}).`);
+  }
+  return cell;
+}
+
 
 const end = reactive<{ open: boolean; winner: Color | null; endFlag: string }>({
   open: false,
   winner: null,
   endFlag: "",
 });
+
+// --------------------------------------------------------------------------------------------
+
+
+// ===============================
+// Section: Cell Functionality
+// ===============================
+
+const cells = ref<Cell[]>([]);
+const highlightedMoves = ref<Map<string, Move>>(new Map());
+let board: Chessboard;
+
+function buildCells() {
+  const arr:Cell[] = [];
+  board = match.value?.chessboard || (() => { throw new Error("Board is undefined"); })();
+  if (match.value == null) {
+    return
+  }
+  for (let h = 0; h < board.height; h++) {
+    for (let x = 0; x < board.width; x++) {
+      const y = match.value?.chessboard.height - h - 1;
+      const dark = (y + x) % 2 === 1;
+      arr.push({
+        key: keyOf(x, y),
+        y: y, x: x, dark: dark,
+        piece: pieceAt(x, y),
+        hl: false,
+        sel: false,
+      });
+    }
+  }
+  cells.value = arr;
+}
+
+function clearHighlights() {
+  cells.value.forEach((cell) => {cell.hl = false; cell.sel = false})
+}
+
+function pieceSprite(p:Piece): string {
+  return `/assets/pieces/${p.color.toLowerCase()}_${p.type.toLowerCase()}.svg`;
+}
+
+async function onCellClick(cell: Cell) {
+
+  // Click on selected cell
+  if (cell.sel) {
+    return;
+  }
+
+  // Click on highlighted cell
+  if (cell.hl) {
+    const move = highlightedMoves.value.get(positionToString({x: cell.x, y: cell.y}));
+    if (!move) {
+      clearHighlights();
+      console.error("Error highlighted move does not have a related move object")
+      return;
+    }
+
+    try {
+      await sendMove(gameId, move);
+      clearHighlights();
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || "Zug konnte nicht gespielt werden");
+    }
+    return;
+  }
+
+  // Click on cell with piece
+  if (cell.piece) {
+    console.log("The cell: (x: " + cell.x + ", y: " + cell.y + ") has been selected");
+    clearHighlights();
+    cell.sel = true;
+    try {
+      const availableMoves: Move[] = await getMoves(match.value?.gameId, {x: cell.x, y: cell.y});
+
+      if (Array.isArray(availableMoves) && availableMoves.length > 0) {
+        const moveMap = new Map<string, Move>();
+        availableMoves.forEach((move) => {
+          moveMap.set(positionToString(move.to), move);
+        });
+        highlightedMoves.value = moveMap;
+        cells.value.map((c) => {if (highlightedMoves.value.has(positionToString({x: c.x, y: c.y}))) {
+          c.hl = true;
+        }})
+      }
+      return;
+    } catch (error) {
+      console.error("Error by fetching available moves:", error);
+    }
+  }
+
+  // Click empty cell
+  clearHighlights();
+}
 
 // --------------------------------------------------------------------------------------------
 
@@ -234,110 +340,6 @@ function syncClockFromWs(remaining?: Record<string, number>) {
 
 // --------------------------------------------------------------------------------------------
 
-
-function rebuildCells() {
-  const arr:any[] = [];
-  if (match.value == null) {
-    return
-  }
-  for (let r = 0; r < match.value?.chessboard.height; r++) {
-    for (let c = 0; c < match.value?.chessboard.width; c++) {
-      const dark = (r+c)%2===1;
-      arr.push({
-        key: keyOf(r, c),
-        row:r, col:c, dark,
-        piece: pieceAt(c, r)
-      });
-    }
-  }
-  cells.value = arr;
-}
-
-function isSelected(cell:any){ return selected.value && selected.value.x===cell.row && selected.value.y===cell.col; }
-
-function isHighlighted(cell:any){ return highlights.value.includes(keyOf(cell.row,cell.col)); }
-
-function clearHighlights() {
-  highlights.value = [];
-  highlightedMoves.value = {};
-  selected.value = null;
-}
-
-function pieceSprite(p:Piece): string {
-  console.log("/assets/pieces/" + p.color.toLowerCase() + "_" + p.type.toLowerCase() + ".svg")
-  return `/assets/pieces/${p.color.toLowerCase()}_${p.type.toLowerCase()}.svg`;
-}
-
-async function onCellClick(cell: any) {
-  // Bereits selektiert? egal → keine Aktion
-  if (isSelected(cell)) {
-    return;
-  }
-
-  // Klick auf eine HIGHLIGHT-Zelle → Move spielen
-  if (isHighlighted(cell)) {
-    const key = keyOf(cell.row, cell.col);
-    const move = highlightedMoves.value[key];
-    if (!move) {
-      // Fallback: sollte nicht passieren, aber wir räumen auf
-      clearHighlights();
-      return;
-    }
-
-    try {
-      await sendMove(gameId, move);
-      // UI-Aufräumen; Brett-Update kommt per WS
-      clearHighlights();
-    } catch (e: any) {
-      toast.error(e?.response?.data?.message || "Zug konnte nicht gespielt werden");
-    }
-    return;
-  }
-
-  // Klick auf eigene Figur → mögliche Züge laden & highlighten
-  if (cell.piece) {
-    // Zelle merken (UI-Selektionsstil)
-    selected.value = { x: cell.row, y: cell.col };
-
-    const position: Position = {
-      x: cell.col,
-      y: (match.value?.chessboard?.height ?? 0) - 1 - cell.row,
-    };
-
-    try {
-      // WICHTIG: nicht 'moves' nennen → nicht die ref überschreiben
-      const availableMoves: Move[] = await getMoves(match.value?.gameId, position);
-
-      if (Array.isArray(availableMoves) && availableMoves.length > 0) {
-        // Map neu befüllen
-        const map: Record<string, Move> = {};
-        for (const mv of availableMoves) {
-          const key = toGridKeyFromChess(mv.to);
-          map[key] = mv;
-        }
-        highlightedMoves.value = map;
-        highlights.value = Object.keys(map);
-      } else {
-        clearHighlights();
-      }
-    } catch {
-      clearHighlights();
-    }
-  } else {
-    // Klick auf leeres Feld ohne Highlight → deselektieren
-    clearHighlights();
-  }
-}
-
-function switchPos(num: number): number {
-  return (match.value?.chessboard?.height ?? 0) - 1 - num;
-}
-
-function toGridKeyFromChess(pos: Position) {
-  const row = switchPos(pos.y);
-  const col = pos.x;
-  return keyOf(row, col);
-}
 
 function onOfferDraw(){ offerDraw(gameId).catch(()=>{}); }
 
@@ -401,6 +403,8 @@ function formatChatTime(time: any) {
 
 // ----- WS handling: subscribe topic/game/{gameId}
 let offGameHandler: (()=>void)|null = null;
+let whitePlayer = ref<User | null>( null);
+let blackPlayer = ref<User | null>( null);
 
 onMounted(async () => {
   const token = localStorage.getItem("token") || undefined;
@@ -408,7 +412,9 @@ onMounted(async () => {
   ws.subscribeGame(gameId);
   offGameHandler = ws.onGameMessage(gameId, handleGameEvent);
 
-  rebuildCells();
+  buildCells();
+  whitePlayer.value = await getUserWithUsername(match.value?.opponents.filter((o) => o.color == 'WHITE').pop()?.username ?? "");
+  blackPlayer.value = await getUserWithUsername(match.value?.opponents.filter((o) => o.color == 'BLACK').pop()?.username ?? "");
   console.log("mount: rebuild cells")
 });
 
@@ -431,16 +437,44 @@ function handleGameEvent(msg:any){
       const move: Move = msg.details.move;
       console.log(move)
 
-      const fromCellIndex = cells.value.findIndex(cell => cell.key === keyOf(switchPos(move.from.y), move.from.x));
-      const toCellIndex = cells.value.findIndex(cell => cell.key === keyOf(switchPos(move.to.y), move.to.x));
+      const fromCellIndex = cells.value.findIndex(cell => cell.key === keyOf(move.from.x, move.from.y));
+      const toCellIndex = cells.value.findIndex(cell => cell.key === keyOf(move.to.x, move.to.y));
 
       const piece: Piece = {type: move.piece.type, position: {x: move.to.x, y: move.to.y}, color: move.piece.color}
-
-      console.log("Piece: " + piece)
 
       if (fromCellIndex !== -1 && toCellIndex !== -1) {
         cells.value[fromCellIndex].piece = null;
         cells.value[toCellIndex].piece = piece;
+      }
+
+      const color: Color = piece.color;
+      let y: number;
+      if (color == "WHITE") {
+        y = 0;
+      } else {
+        y = board.height - 1;
+      }
+
+      if (move.flag == 'CASTLE_KING') {
+        const cellFrom: Cell = cellAt(board.width - 1, y);
+        const cellTo: Cell = cellAt(board.width - 3, y);
+        if (cellFrom.piece == null) {
+          throw new Error("Cell error");
+        }
+        const rook: Piece = cellFrom.piece;
+        cellFrom.piece = null;
+        cellTo.piece = rook;
+      }
+
+      if (move.flag == 'CASTLE_QUEEN') {
+        const cellFrom: Cell = cellAt(0, y);
+        const cellTo: Cell = cellAt(3, y);
+        if (cellFrom.piece == null) {
+          throw new Error("Cell error");
+        }
+        const rook: Piece = cellFrom.piece;
+        cellFrom.piece = null;
+        cellTo.piece = rook;
       }
 
       turn.value = (turn.value === "WHITE") ? "BLACK" : "WHITE";
@@ -503,8 +537,6 @@ function handleGameEvent(msg:any){
 // Section: End game pop up
 // ===========================
 
-import { computed } from "vue";
-
 const winnerPlayer = computed(() => {
   if (end.winner === "WHITE") return white;
   if (end.winner === "BLACK") return black;
@@ -542,9 +574,6 @@ function onRematch(){
 function onBack(){
   router.push('/lobby');
 }
-
-import ConfirmModal from "../components/ConfirmModal.vue";
-import router from "../router";
 
 const confirm = reactive({
   open: false,
@@ -707,6 +736,22 @@ function onConfirmCancel(){
 }
 .chat-line.is-white { background: rgba(255,255,255,0.06); color: #000; }
 .chat-line.is-black { background: rgba(0,0,0,0.12); color: #fff; }
+
+.input-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.form-control {
+  width: 100%;
+  margin-bottom: 10px;
+  resize: none;
+}
+
+.button-container {
+  display: flex;
+  justify-content: flex-end;
+}
 
 
 </style>

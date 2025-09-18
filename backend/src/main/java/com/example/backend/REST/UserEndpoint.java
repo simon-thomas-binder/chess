@@ -10,6 +10,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -30,6 +31,11 @@ public class UserEndpoint {
     @PostMapping("/login")
     public ResponseEntity<TokenDto> login(@Valid @RequestBody LoginUserDto req) {
         return ResponseEntity.ok(userService.loginUser(req));
+    }
+
+    @GetMapping("/get/{username}")
+    public ResponseEntity<ReturnUserDto> getUser(@PathVariable String username) {
+        return ResponseEntity.ok(userService.getUser(username).getUserDto());
     }
 
     @GetMapping

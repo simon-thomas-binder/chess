@@ -41,3 +41,9 @@ export async function getUser(): Promise<User> {
     const { data } = await api.get<User>("/auth");
     return data;
 }
+
+export async function getUserWithUsername(username: string): Promise<User> {
+    console.log("The user to get has the username: " + username);
+    const { data } = await api.get<User>("/auth/get/" + username);
+    return data;
+}
