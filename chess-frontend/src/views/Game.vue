@@ -4,20 +4,13 @@
 
       <!-- Left section: game infos -->
       <div class="col-12 col-xl-2">
-        <div class="card--glass p-3 text-center mb-3">
-          <div class="avatar-box mb-2"><img :src="white.avatar" class="avatar-img" /></div>
-          <h6 class="fw-semibold">{{ white.name }}</h6>
-          <h6 class="fw-semibold">{{ whitePlayer?.displayname }}</h6>
-          <div class="timer" :class="{ active: turn === 'WHITE', low: white.time <= 10000 }">
-            {{ formatTime(white.time) }}
+        <div v-for="([color, user]) in Array.from(players.entries())" :key="color" class="card--glass p-3 text-center mb-3">
+          <div class="avatar-box mb-2">
+            <img :src="getAvatar(user)" class="avatar-img" />
           </div>
-        </div>
-        <div class="card--glass p-3 text-center">
-          <div class="avatar-box mb-2"><img :src="black.avatar" class="avatar-img" /></div>
-          <h6 class="fw-semibold">{{ black.name }}</h6>
-          <h6 class="fw-semibold">{{ blackPlayer?.displayname }}</h6>
-          <div class="timer" :class="{ active: turn === 'BLACK', low: black.time <= 10000 }">
-            {{ formatTime(black.time) }}
+          <h6 class="fw-semibold">{{ color }} - {{ user.displayname }}</h6>
+          <div class="timer" :class="{ active: turn === color, low: times.get(color) ?? 0 <= 10000 }">
+            {{ formatTime(times.get(color) ?? 0) }}
           </div>
         </div>
         <div class="card--glass p-3 mt-3">
@@ -29,7 +22,7 @@
       </div>
 
       <!-- Center section: board -->
-      <div class="col-12 col-xl-8 d-flex flex-column">
+      <div class="col-12 col-xl-7 d-flex flex-column">
         <div
             class="board card--glass p-2"
             :style="{ gridTemplateColumns: `repeat(${match?.chessboard.width}, 1fr)` }"
@@ -64,26 +57,49 @@
       </div>
 
       <!-- Right section: Chat -->
-      <div class="col-12 col-xl-2">
+      <div class="col-12 col-xl-3"> <!-- optional: chat etwas breiter -->
         <div class="card--glass p-3 chat">
           <h6 class="fw-semibold mb-2">Chat</h6>
-          <div class="chat-messages" ref="chatContainer">
-            <div v-for="m in chat" :key="m.id" class="chat-line" :class="m.color">
-              <div>
-                <small class="text-muted me-1">{{ m.timeFormatted }}</small>
-                <strong>{{ m.color }}:</strong>
+
+          <!-- messages -->
+          <div class="chat-messages" ref="chatContainer" role="log" aria-live="polite">
+            <div
+                v-for="(m, idx) in chat"
+                :key="m.id"
+                :class="['chat-line', m.color, { grouped: isGrouped(idx) }]"
+            >
+              <!-- Meta shown only if not grouped -->
+              <div v-if="!isGrouped(idx)" class="chat-meta">
+                <strong class="chat-name">{{ players.get(m.color ?? 'WHITE')?.displayname ?? '-' }}</strong>
               </div>
-              <div>
-                <span>{{ m.text }}</span>
+
+              <!-- Bubble (preserve linebreaks) -->
+              <div class="chat-bubble" :title="m.timeFormatted">
+                <span class="chat-text" v-text="m.text"></span>
+                <small class="chat-time">{{ m.timeFormatted }}</small>
               </div>
             </div>
           </div>
-          <div class="mt-2">
-            <textarea v-model="chatInput" class="form-control input-group" @keyup.enter="onSendChat" placeholder="Nachricht…" rows="5"></textarea>
-            <button class="btn btn-accent input-group" @click="onSendChat">Senden</button>
+
+          <!-- input -->
+          <div class="mt-2 chat-input-row">
+      <textarea
+          v-model="chatInput"
+          class="form-control chat-input"
+          @keydown.enter.prevent="onSendChat"
+            @keydown.shift.enter.stop
+            rows="2"
+            placeholder="Nachricht…"
+            >
+            </textarea>
+
+            <div class="d-flex justify-content-end mt-2">
+              <button class="btn btn-accent" @click="onSendChat">Senden</button>
+            </div>
           </div>
         </div>
       </div>
+
 
       <!-- End-modal Overlay -->
       <div v-if="end.open" class="end-overlay" @click.self="end.open = false">
@@ -107,17 +123,17 @@
           <!-- Winner / Draw presentation -->
           <div v-if="endUi.hasWinner" class="winner-wrap">
             <div class="winner-avatar" :class="end.winner === 'WHITE' ? 'is-white' : 'is-black'">
-              <img :src="winnerPlayer.avatar" class="avatar-img" />
+              <img :src="getAvatar(winnerPlayer)" class="avatar-img" />
               <img class="king-overlay" :src="`/pieces/${(end.winner||'white').toLowerCase()}_king.png`" alt="" />
             </div>
             <div class="winner-info">
-              <div class="winner-name">{{ winnerPlayer.name }}</div>
+              <div class="winner-name">{{ winnerPlayer.displayname }}</div>
               <div class="color-pill" :class="end.winner === 'WHITE' ? 'pill-white' : 'pill-black'">
                 {{ end.winner === 'WHITE' ? 'Weiß' : 'Schwarz' }}
               </div>
             </div>
           </div>
-
+<!--
           <div v-else class="draw-wrap">
             <div class="draw-player">
               <div class="mini-avatar is-white"><img :src="white.avatar" /></div>
@@ -128,7 +144,7 @@
               <div class="mini-avatar is-black"><img :src="black.avatar" /></div>
               <div class="mini-name">{{ black.name }}</div>
             </div>
-          </div>
+          </div>-->
 
           <div class="d-flex gap-2 mt-4 justify-content-center">
             <button class="btn btn-accent" @click="onRematch">Revanche</button>
@@ -153,7 +169,7 @@
 </template>
 
 <script setup lang="ts">
-import {computed, nextTick, onBeforeUnmount, onMounted, reactive, ref} from "vue";
+import {computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch} from "vue";
 import {useRoute} from "vue-router";
 import {useWs} from "../composables/ws";
 import {getMoves, offerDraw, resign, sendChat, sendMove} from "../services/gameService";
@@ -162,7 +178,7 @@ import {type Cell, type Chessboard, type Color, type Move, type Piece, positionT
 import {useMatchStore} from "../stores/matchStore";
 import ConfirmModal from "../components/ConfirmModal.vue";
 import router from "../router";
-import {getUserWithUsername, type User} from "../services/authService.ts";
+import {getUser, getUserWithUsername, type User} from "../services/authService.ts";
 
 // ----- Routing / IDs
 const route = useRoute();
@@ -176,10 +192,8 @@ const match = ref(matchStore.current);
 
 const turn = ref<Color>("WHITE");
 const moves = ref<any[]>([]);
-
-// players & clocks (demo fallback)
-const white = reactive({ name: "Weiß", avatar: "/assets/default-avatar.png", time: match.value?.chessboard.initial_time ?? 0 });
-const black = reactive({ name: "Schwarz", avatar: "/assets/default-avatar.png", time: match.value?.chessboard.initial_time ?? 0 });
+const players = ref<Map<Color, User>>(new Map());
+const times = ref<Map<Color, number>>(new Map());
 
 // ----- helpers
 function keyOf(x: number, y: number): string { return `${x}:${y}`; }
@@ -320,9 +334,9 @@ function stopClock() {
 function stepClock(ts: number) {
   const dt = ts - lastTimestamp;
   lastTimestamp = ts;
-  if (turn.value === "WHITE") white.time = Math.max(0, white.time - dt);
-  else if (turn.value === "BLACK") black.time = Math.max(0, black.time - dt);
-  if (ticking && !end.open && white.time > 0 && black.time > 0) {
+  if (turn.value === "WHITE") times.value.set('WHITE', Math.max(0, times.value.get('WHITE') ?? 0 - dt));
+  else if (turn.value === "BLACK") times.value.set('BLACK', Math.max(0, times.value.get('BLACK') ?? 0 - dt));
+  if (ticking && !end.open && (times.value.get('WHITE') ?? 0) > 0 && (times.value.get('BLACK') ?? 0) > 0) {
     rafId = requestAnimationFrame(stepClock);
   }
 }
@@ -332,8 +346,8 @@ function syncClockFromWs(remaining?: Record<string, number>) {
   if (remaining) {
     const w = (remaining as any).white ?? (remaining as any).WHITE ?? (remaining as any).White;
     const b = (remaining as any).black ?? (remaining as any).BLACK ?? (remaining as any).Black;
-    if (typeof w === "number") white.time = w;
-    if (typeof b === "number") black.time = b;
+    if (typeof w === "number") times.value.set('WHITE', w);
+    if (typeof b === "number") times.value.set('BLACK', b);
   }
   if (!end.open) startClock();
 }
@@ -395,6 +409,46 @@ function formatChatTime(time: any) {
   }
 }
 
+function isGrouped(idx: number): boolean {
+  if (idx === 0) return false;
+
+  const cur = chat.value[idx];
+  const prev = chat.value[idx - 1];
+
+  if (!cur || !prev) return false;
+
+  // gleiche Farbe?
+  if (cur.color !== prev.color) return false;
+
+  // optional: innerhalb 2 Minuten -> gruppieren
+  const t1 = cur.timeFormatted;
+  const t2 = prev.timeFormatted;
+
+  if (t1 && t2) {
+    try {
+      const d1 = new Date("1970-01-01T" + t1); // Dummy-Datum mit Uhrzeit
+      const d2 = new Date("1970-01-01T" + t2);
+      const delta = Math.abs(d1.getTime() - d2.getTime());
+      if (delta > 2 * 60 * 1000) return false; // mehr als 2 Minuten Abstand
+    } catch {
+      return false;
+    }
+  }
+  return true;
+}
+
+watch(chat, async () => {
+  await nextTick();
+  try {
+    if (chatContainer.value) {
+      chatContainer.value.scrollTop = chatContainer.value.scrollHeight;
+    }
+  } catch {
+    // ignore scroll errors
+  }
+});
+
+
 // --------------------------------------------------------------------------------------------
 
 // ====================
@@ -403,8 +457,7 @@ function formatChatTime(time: any) {
 
 // ----- WS handling: subscribe topic/game/{gameId}
 let offGameHandler: (()=>void)|null = null;
-let whitePlayer = ref<User | null>( null);
-let blackPlayer = ref<User | null>( null);
+
 
 onMounted(async () => {
   const token = localStorage.getItem("token") || undefined;
@@ -413,10 +466,25 @@ onMounted(async () => {
   offGameHandler = ws.onGameMessage(gameId, handleGameEvent);
 
   buildCells();
-  whitePlayer.value = await getUserWithUsername(match.value?.opponents.filter((o) => o.color == 'WHITE').pop()?.username ?? "");
-  blackPlayer.value = await getUserWithUsername(match.value?.opponents.filter((o) => o.color == 'BLACK').pop()?.username ?? "");
   console.log("mount: rebuild cells")
+  await initialisePlayers();
+  console.log("mount: initialise players")
 });
+
+async function initialisePlayers() {
+  if (match.value == undefined) {
+    throw new Error('Match is not defined!')
+  }
+
+  const color = match.value?.color;
+  if (color == undefined) {throw new Error('Color is undefined');}
+  const user = await getUser();
+  players.value.set(color, user);
+  for (const opp of match.value?.opponents) {
+    const oppUser: User = await getUserWithUsername(opp.username);
+    players.value.set(opp.color, oppUser)
+  }
+}
 
 onBeforeUnmount(() => {
   offGameHandler?.();
@@ -537,9 +605,9 @@ function handleGameEvent(msg:any){
 // Section: End game pop up
 // ===========================
 
-const winnerPlayer = computed(() => {
-  if (end.winner === "WHITE") return white;
-  if (end.winner === "BLACK") return black;
+const winnerPlayer: any = computed(() => {
+  if (end.winner === "WHITE") return players.value.get('WHITE');
+  if (end.winner === "BLACK") return players.value.get('BLACK');
   return { name: "—", avatar: "/assets/default-avatar.png" } as any;
 });
 
@@ -608,6 +676,11 @@ function onConfirmCancel(){
   confirm._resolve(false);
 }
 
+//TODO:
+function getAvatar(user: User): string {
+  return String(user.username);
+}
+
 // --------------------------------------------------------------------------------------------
 
 </script>
@@ -616,6 +689,7 @@ function onConfirmCancel(){
 .board {
   display: grid;
   gap: 4px;
+  max-height: 100%;
 }
 .cell {
   width: 100%;
@@ -752,6 +826,70 @@ function onConfirmCancel(){
   display: flex;
   justify-content: flex-end;
 }
+
+/* Chat layout */
+.chat { height: 80vh; display: flex; flex-direction: column; }
+.chat-messages { flex: 1; overflow-y: auto; padding: 6px; scroll-behavior: smooth; }
+
+/* eine Nachricht (Block) */
+.chat-line {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 8px;
+  max-width: 100%;
+}
+
+/* Wenn grouped: weniger Abstand und keine meta-line */
+.chat-line.grouped { margin-top: -6px; margin-bottom: 6px; }
+
+/* Meta: Name + Zeit */
+.chat-meta { display: flex; gap: 8px; align-items: center; color: var(--muted); }
+.chat-name { font-weight: 600; }
+.chat-time { color: var(--muted); font-size: 0.72rem; margin-left: 10px; }
+
+/* Bubble */
+.chat-bubble {
+  padding: 8px 10px;
+  border-radius: 10px;
+  max-width: 100%;
+  white-space: pre-wrap;            /* behalte newline im text */
+  overflow-wrap: anywhere;         /* zwingt langes Wort zum umbrechen (beste Kompatibilität) */
+  word-break: break-word;          /* fallback */
+  line-height: 1.3;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.25);
+  font-size: 0.95rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.chat-text {
+  flex: 1;
+}
+
+/* Farben pro Spieler (verwende Klassen is-white / is-black durch m.color) */
+/* Passe die alpha-Werte nach Geschmack an, wichtig ist Kontrast! */
+.chat-line.is-white .chat-bubble {
+  background: rgba(255,255,255,0.08);
+  color: #0b0b0b; /* dunkles text für helle bubble */
+}
+.chat-line.is-black .chat-bubble {
+  background: rgba(255,255,255,0.03);
+  color: var(--text); /* hellen text */
+}
+
+.chat-line.is-white .chat-bubble::before { background: rgba(255,255,255,0.22); }
+.chat-line.is-black .chat-bubble::before { background: rgba(0,0,0,0.4); }
+
+/* Input area */
+.chat-input-row { display: flex; flex-direction: column; }
+.chat-input { resize: none; min-height: 42px; max-height: 140px; }
+
+/* Mobil: weniger Höhe falls nötig */
+@media (max-width: 1199px) {
+  .chat { height: auto; } /* erlaubt natürliche Größe auf kleinen Bildschirmen (chat unter dem board) */
+}
+
 
 
 </style>

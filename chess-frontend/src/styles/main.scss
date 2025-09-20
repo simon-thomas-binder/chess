@@ -61,6 +61,10 @@ body {
   border: 1px solid rgba(255,255,255,0.06);
 }
 
+.small {
+  color: var(--muted);
+}
+
 /* Hilfsklassen */
 .page-center {
   min-height: 100%;
@@ -95,4 +99,22 @@ input[type="password"]::-ms-clear {
 
 .form-control {
 
+}
+
+/* global scrollbars (setze in src/styles/main.scss) */
+/* WebKit / Blink (Chrome, Edge, Safari) */
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.06);
+  border-radius: 10px;
+  border: 2px solid transparent; /* nice padding */
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.10); }
+
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.12) transparent;
 }
