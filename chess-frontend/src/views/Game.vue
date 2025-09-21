@@ -76,7 +76,6 @@
               <!-- Bubble (preserve linebreaks) -->
               <div class="chat-bubble" :title="m.timeFormatted">
                 <span class="chat-text" v-text="m.text"></span>
-                <small class="chat-time">{{ m.timeFormatted }}</small>
               </div>
             </div>
           </div>
@@ -193,7 +192,7 @@ const match = ref(matchStore.current);
 const turn = ref<Color>("WHITE");
 const moves = ref<any[]>([]);
 const players = ref<Map<Color, User>>(new Map());
-const times = ref<Map<Color, number>>(new Map());
+const times = reactive(new Map<Color, number>()) as unknown as Map<Color, number>;
 
 // ----- helpers
 function keyOf(x: number, y: number): string { return `${x}:${y}`; }
@@ -334,10 +333,18 @@ function stopClock() {
 function stepClock(ts: number) {
   const dt = ts - lastTimestamp;
   lastTimestamp = ts;
-  if (turn.value === "WHITE") times.value.set('WHITE', Math.max(0, times.value.get('WHITE') ?? 0 - dt));
-  else if (turn.value === "BLACK") times.value.set('BLACK', Math.max(0, times.value.get('BLACK') ?? 0 - dt));
-  if (ticking && !end.open && (times.value.get('WHITE') ?? 0) > 0 && (times.value.get('BLACK') ?? 0) > 0) {
+
+  if (turn.value === "WHITE") {
+    const newW = Math.max(0, (times.get('WHITE') ?? 0) - dt);
+    times.set('WHITE', newW);
+  } else {
+    const newB = Math.max(0, (times.get('BLACK') ?? 0) - dt);
+    times.set('BLACK', newB);
+  }
+
+  if (ticking && !end.open && (times.get('WHITE') ?? 0) > 0 && (times.get('BLACK') ?? 0) > 0) {
     rafId = requestAnimationFrame(stepClock);
+  } else {
   }
 }
 
@@ -346,8 +353,8 @@ function syncClockFromWs(remaining?: Record<string, number>) {
   if (remaining) {
     const w = (remaining as any).white ?? (remaining as any).WHITE ?? (remaining as any).White;
     const b = (remaining as any).black ?? (remaining as any).BLACK ?? (remaining as any).Black;
-    if (typeof w === "number") times.value.set('WHITE', w);
-    if (typeof b === "number") times.value.set('BLACK', b);
+    if (typeof w === "number") times.set('WHITE', w);
+    if (typeof b === "number") times.set('BLACK', b);
   }
   if (!end.open) startClock();
 }
@@ -483,6 +490,10 @@ async function initialisePlayers() {
   for (const opp of match.value?.opponents) {
     const oppUser: User = await getUserWithUsername(opp.username);
     players.value.set(opp.color, oppUser)
+  }
+
+  for (const p of players.value.keys()) {
+    times.set(p, match.value.chessboard.initial_time)
   }
 }
 
