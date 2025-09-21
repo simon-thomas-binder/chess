@@ -1,20 +1,16 @@
 <template>
   <div class="container-xxl py-4">
     <div class="row g-4">
-      <!-- Links: Spielerinfos -->
+
+      <!-- Left section: game infos -->
       <div class="col-12 col-xl-2">
-        <div class="card--glass p-3 text-center mb-3">
-          <div class="avatar-box mb-2"><img :src="white.avatar" class="avatar-img" /></div>
-          <h6 class="fw-semibold">{{ white.name }}</h6>
-          <div class="timer" :class="{ active: turn === 'WHITE', low: white.time <= 10000 }">
-            {{ formatTime(white.time) }}
+        <div v-for="([color, user]) in Array.from(players.entries())" :key="color" class="card--glass p-3 text-center mb-3">
+          <div class="avatar-box mb-2">
+            <img :src="getAvatar(user)" class="avatar-img" />
           </div>
-        </div>
-        <div class="card--glass p-3 text-center">
-          <div class="avatar-box mb-2"><img :src="black.avatar" class="avatar-img" /></div>
-          <h6 class="fw-semibold">{{ black.name }}</h6>
-          <div class="timer" :class="{ active: turn === 'BLACK', low: black.time <= 10000 }">
-            {{ formatTime(black.time) }}
+          <h6 class="fw-semibold">{{ color }} - {{ user.displayname }}</h6>
+          <div class="timer" :class="{ active: turn === color, low: times.get(color) ?? 0 <= 10000 }">
+            {{ formatTime(times.get(color) ?? 0) }}
           </div>
         </div>
         <div class="card--glass p-3 mt-3">
@@ -25,8 +21,8 @@
         </div>
       </div>
 
-      <!-- Mitte: Board -->
-      <div class="col-12 col-xl-8 d-flex flex-column">
+      <!-- Center section: board -->
+      <div class="col-12 col-xl-7 d-flex flex-column">
         <div
             class="board card--glass p-2"
             :style="{ gridTemplateColumns: `repeat(${match?.chessboard.width}, 1fr)` }"
@@ -35,7 +31,7 @@
               v-for="cell in cells"
               :key="cell.key"
               class="cell"
-              :class="{ dark: cell.dark, sel: isSelected(cell), hl: isHighlighted(cell) }"
+              :class="{ dark: cell.dark, sel: cell.sel, hl: cell.hl }"
               @click="onCellClick(cell)"
           >
             <img
@@ -43,6 +39,7 @@
                 :src="pieceSprite(cell.piece)"
                 class="piece"
                 draggable="false"
+                :alt="cell.piece.color.toLowerCase() + ' ' +  cell.piece.type.toLowerCase()"
             />
           </div>
         </div>
@@ -59,23 +56,51 @@
         </div>
       </div>
 
-      <!-- Rechts: Chat -->
-      <div class="col-12 col-xl-2">
+      <!-- Right section: Chat -->
+      <div class="col-12 col-xl-3"> <!-- optional: chat etwas breiter -->
         <div class="card--glass p-3 chat">
           <h6 class="fw-semibold mb-2">Chat</h6>
-          <div class="chat-messages">
-            <div v-for="m in chat" :key="m.id" class="chat-line">
-              <strong>{{ m.sender }}:</strong> {{ m.text }}
+
+          <!-- messages -->
+          <div class="chat-messages" ref="chatContainer" role="log" aria-live="polite">
+            <div
+                v-for="(m, idx) in chat"
+                :key="m.id"
+                :class="['chat-line', m.color, { grouped: isGrouped(idx) }]"
+            >
+              <!-- Meta shown only if not grouped -->
+              <div v-if="!isGrouped(idx)" class="chat-meta">
+                <strong class="chat-name">{{ players.get(m.color ?? 'WHITE')?.displayname ?? '-' }}</strong>
+              </div>
+
+              <!-- Bubble (preserve linebreaks) -->
+              <div class="chat-bubble" :title="m.timeFormatted">
+                <span class="chat-text" v-text="m.text"></span>
+              </div>
             </div>
           </div>
-          <div class="input-group mt-2">
-            <input v-model="chatInput" class="form-control" @keyup.enter="onSendChat" placeholder="Nachricht…" />
-            <button class="btn btn-accent" @click="onSendChat">Senden</button>
+
+          <!-- input -->
+          <div class="mt-2 chat-input-row">
+      <textarea
+          v-model="chatInput"
+          class="form-control chat-input"
+          @keydown.enter.prevent="onSendChat"
+            @keydown.shift.enter.stop
+            rows="2"
+            placeholder="Nachricht…"
+            >
+            </textarea>
+
+            <div class="d-flex justify-content-end mt-2">
+              <button class="btn btn-accent" @click="onSendChat">Senden</button>
+            </div>
           </div>
         </div>
       </div>
 
-      <!-- Endscreen Overlay -->
+
+      <!-- End-modal Overlay -->
       <div v-if="end.open" class="end-overlay" @click.self="end.open = false">
         <div class="end-card">
           <!-- Icon + Title -->
@@ -97,17 +122,17 @@
           <!-- Winner / Draw presentation -->
           <div v-if="endUi.hasWinner" class="winner-wrap">
             <div class="winner-avatar" :class="end.winner === 'WHITE' ? 'is-white' : 'is-black'">
-              <img :src="winnerPlayer.avatar" class="avatar-img" />
+              <img :src="getAvatar(winnerPlayer)" class="avatar-img" />
               <img class="king-overlay" :src="`/pieces/${(end.winner||'white').toLowerCase()}_king.png`" alt="" />
             </div>
             <div class="winner-info">
-              <div class="winner-name">{{ winnerPlayer.name }}</div>
+              <div class="winner-name">{{ winnerPlayer.displayname }}</div>
               <div class="color-pill" :class="end.winner === 'WHITE' ? 'pill-white' : 'pill-black'">
                 {{ end.winner === 'WHITE' ? 'Weiß' : 'Schwarz' }}
               </div>
             </div>
           </div>
-
+<!--
           <div v-else class="draw-wrap">
             <div class="draw-player">
               <div class="mini-avatar is-white"><img :src="white.avatar" /></div>
@@ -118,7 +143,7 @@
               <div class="mini-avatar is-black"><img :src="black.avatar" /></div>
               <div class="mini-name">{{ black.name }}</div>
             </div>
-          </div>
+          </div>-->
 
           <div class="d-flex gap-2 mt-4 justify-content-center">
             <button class="btn btn-accent" @click="onRematch">Revanche</button>
@@ -143,13 +168,16 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, onBeforeUnmount, reactive, ref } from "vue";
-import { useRoute } from "vue-router";
-import { useWs } from "../composables/ws";
-import {sendChat, offerDraw, resign, getMoves, sendMove} from "../services/gameService";
-import { toast } from "../composables/toast";
-import type {Color, Move, Piece, Position} from "../models/chess.ts";
-import { useMatchStore } from "../stores/matchStore";
+import {computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch} from "vue";
+import {useRoute} from "vue-router";
+import {useWs} from "../composables/ws";
+import {getMoves, offerDraw, resign, sendChat, sendMove} from "../services/gameService";
+import {toast} from "../composables/toast";
+import {type Cell, type Chessboard, type Color, type Move, type Piece, positionToString} from "../models/chess.ts";
+import {useMatchStore} from "../stores/matchStore";
+import ConfirmModal from "../components/ConfirmModal.vue";
+import router from "../router";
+import {getUser, getUserWithUsername, type User} from "../services/authService.ts";
 
 // ----- Routing / IDs
 const route = useRoute();
@@ -161,28 +189,22 @@ const ws = useWs();
 const matchStore = useMatchStore();
 const match = ref(matchStore.current);
 
-const cells = ref<any[]>([]);
-const selected = ref<{x:number;y:number}|null>(null);
-const highlights = ref<string[]>([]);
-const highlightedMoves = ref<Record<string, Move>>({});
 const turn = ref<Color>("WHITE");
-
-// players & clocks (demo fallback)
-const white = reactive({ name: "Weiß", avatar: "/assets/default-avatar.png", time: 300000 });
-const black = reactive({ name: "Schwarz", avatar: "/assets/default-avatar.png", time: 300000 });
-
-// move list + chat
 const moves = ref<any[]>([]);
-const chat = ref<{id:number; sender:string; text:string}[]>([]);
-const chatInput = ref("");
+const players = ref<Map<Color, User>>(new Map());
+const times = reactive(new Map<Color, number>()) as unknown as Map<Color, number>;
 
 // ----- helpers
-function keyOf(row:number,col:number){ return `${row}:${col}`; }
-function pieceAt(x:number,y:number){ return match.value?.chessboard.pieces.find(p=>p.position.x===x && p.position.y===y) || null; }
+function keyOf(x: number, y: number): string { return `${x}:${y}`; }
+function pieceAt(x: number,y: number): Piece | null { return match.value?.chessboard.pieces.find(p=>p.position.x===x && p.position.y===y) || null; }
+function cellAt(x: number, y: number): Cell {
+  const cell = cells.value.find((cell) => cell.x === x && cell.y === y);
+  if (!cell) {
+    throw new Error(`Cell not found at position (${x}, ${y}).`);
+  }
+  return cell;
+}
 
-// --- Board sizing ---
-const boardWrap = ref<HTMLElement | null>(null);
-let resizeObs: ResizeObserver | null = null;
 
 const end = reactive<{ open: boolean; winner: Color | null; endFlag: string }>({
   open: false,
@@ -190,93 +212,65 @@ const end = reactive<{ open: boolean; winner: Color | null; endFlag: string }>({
   endFlag: "",
 });
 
-let ticking = false;
-let rafId = 0;
-let lastTs = 0;
+// --------------------------------------------------------------------------------------------
 
-function startClock() {
-  if (ticking) return;
-  ticking = true;
-  lastTs = performance.now();
-  rafId = requestAnimationFrame(stepClock);
-}
-function stopClock() {
-  ticking = false;
-  cancelAnimationFrame(rafId);
-}
-function stepClock(ts: number) {
-  const dt = ts - lastTs;
-  lastTs = ts;
-  if (turn.value === "WHITE") white.time = Math.max(0, white.time - dt);
-  else if (turn.value === "BLACK") black.time = Math.max(0, black.time - dt);
-  if (ticking && !end.open && white.time > 0 && black.time > 0) {
-    rafId = requestAnimationFrame(stepClock);
-  }
-}
 
-function syncClockFromWs(remaining?: Record<string, number>, nextTurn?: Color) {
-  if (remaining) {
-    const w = (remaining as any).white ?? (remaining as any).WHITE ?? (remaining as any).White;
-    const b = (remaining as any).black ?? (remaining as any).BLACK ?? (remaining as any).Black;
-    if (typeof w === "number") white.time = w;
-    if (typeof b === "number") black.time = b;
-  }
-  if (nextTurn === "WHITE" || nextTurn === "BLACK") turn.value = nextTurn;
-  stopClock();
-  if (!end.open) startClock();
-}
+// ===============================
+// Section: Cell Functionality
+// ===============================
 
-function rebuildCells() {
-  const arr:any[] = [];
+const cells = ref<Cell[]>([]);
+const highlightedMoves = ref<Map<string, Move>>(new Map());
+let board: Chessboard;
+
+function buildCells() {
+  const arr:Cell[] = [];
+  board = match.value?.chessboard || (() => { throw new Error("Board is undefined"); })();
   if (match.value == null) {
     return
   }
-  for (let r = 0; r < match.value?.chessboard.height; r++) {
-    for (let c = 0; c < match.value?.chessboard.width; c++) {
-      const dark = (r+c)%2===1;
+  for (let h = 0; h < board.height; h++) {
+    for (let x = 0; x < board.width; x++) {
+      const y = match.value?.chessboard.height - h - 1;
+      const dark = (y + x) % 2 === 1;
       arr.push({
-        key: keyOf(r, c),
-        row:r, col:c, dark,
-        piece: pieceAt(c, r)
+        key: keyOf(x, y),
+        y: y, x: x, dark: dark,
+        piece: pieceAt(x, y),
+        hl: false,
+        sel: false,
       });
     }
   }
   cells.value = arr;
 }
 
-function isSelected(cell:any){ return selected.value && selected.value.x===cell.row && selected.value.y===cell.col; }
-
-function isHighlighted(cell:any){ return highlights.value.includes(keyOf(cell.row,cell.col)); }
-
 function clearHighlights() {
-  highlights.value = [];
-  highlightedMoves.value = {};
-  selected.value = null;
+  cells.value.forEach((cell) => {cell.hl = false; cell.sel = false})
 }
 
-function pieceSprite(p:Piece){
-  return `/pieces/${p.color.toLowerCase()}_${p.type}.png`;
+function pieceSprite(p:Piece): string {
+  return `/assets/pieces/${p.color.toLowerCase()}_${p.type.toLowerCase()}.svg`;
 }
 
-async function onCellClick(cell: any) {
-  // Bereits selektiert? egal → keine Aktion
-  if (isSelected(cell)) {
+async function onCellClick(cell: Cell) {
+
+  // Click on selected cell
+  if (cell.sel) {
     return;
   }
 
-  // Klick auf eine HIGHLIGHT-Zelle → Move spielen
-  if (isHighlighted(cell)) {
-    const key = keyOf(cell.row, cell.col);
-    const move = highlightedMoves.value[key];
+  // Click on highlighted cell
+  if (cell.hl) {
+    const move = highlightedMoves.value.get(positionToString({x: cell.x, y: cell.y}));
     if (!move) {
-      // Fallback: sollte nicht passieren, aber wir räumen auf
       clearHighlights();
+      console.error("Error highlighted move does not have a related move object")
       return;
     }
 
     try {
       await sendMove(gameId, move);
-      // UI-Aufräumen; Brett-Update kommt per WS
       clearHighlights();
     } catch (e: any) {
       toast.error(e?.response?.data?.message || "Zug konnte nicht gespielt werden");
@@ -284,74 +278,89 @@ async function onCellClick(cell: any) {
     return;
   }
 
-  // Klick auf eigene Figur → mögliche Züge laden & highlighten
+  // Click on cell with piece
   if (cell.piece) {
-    // Zelle merken (UI-Selektionsstil)
-    selected.value = { x: cell.row, y: cell.col };
-
-    const position: Position = {
-      x: cell.col,
-      y: (match.value?.chessboard?.height ?? 0) - 1 - cell.row,
-    };
-
+    console.log("The cell: (x: " + cell.x + ", y: " + cell.y + ") has been selected");
+    clearHighlights();
+    cell.sel = true;
     try {
-      // WICHTIG: nicht 'moves' nennen → nicht die ref überschreiben
-      const availableMoves: Move[] = await getMoves(match.value?.gameId, position);
+      const availableMoves: Move[] = await getMoves(match.value?.gameId, {x: cell.x, y: cell.y});
 
       if (Array.isArray(availableMoves) && availableMoves.length > 0) {
-        // Map neu befüllen
-        const map: Record<string, Move> = {};
-        for (const mv of availableMoves) {
-          const key = toGridKeyFromChess(mv.to);
-          map[key] = mv;
-        }
-        highlightedMoves.value = map;
-        highlights.value = Object.keys(map);
-      } else {
-        clearHighlights();
+        const moveMap = new Map<string, Move>();
+        availableMoves.forEach((move) => {
+          moveMap.set(positionToString(move.to), move);
+        });
+        highlightedMoves.value = moveMap;
+        cells.value.map((c) => {if (highlightedMoves.value.has(positionToString({x: c.x, y: c.y}))) {
+          c.hl = true;
+        }})
       }
-    } catch {
-      clearHighlights();
+      return;
+    } catch (error) {
+      console.error("Error by fetching available moves:", error);
     }
+  }
+
+  // Click empty cell
+  clearHighlights();
+}
+
+// --------------------------------------------------------------------------------------------
+
+
+// ===============================
+// Section: Clock Functionality
+// ===============================
+
+let ticking: boolean = false;
+let lastTimestamp = 0;
+//Request Animation Frame ID
+let rafId = 0;
+
+function startClock() {
+  if (ticking) return;
+  ticking = true;
+  lastTimestamp = performance.now();
+  rafId = requestAnimationFrame(stepClock);
+}
+
+function stopClock() {
+  ticking = false;
+  cancelAnimationFrame(rafId);
+}
+
+function stepClock(ts: number) {
+  const dt = ts - lastTimestamp;
+  lastTimestamp = ts;
+
+  if (turn.value === "WHITE") {
+    const newW = Math.max(0, (times.get('WHITE') ?? 0) - dt);
+    times.set('WHITE', newW);
   } else {
-    // Klick auf leeres Feld ohne Highlight → deselektieren
-    clearHighlights();
+    const newB = Math.max(0, (times.get('BLACK') ?? 0) - dt);
+    times.set('BLACK', newB);
+  }
+
+  if (ticking && !end.open && (times.get('WHITE') ?? 0) > 0 && (times.get('BLACK') ?? 0) > 0) {
+    rafId = requestAnimationFrame(stepClock);
+  } else {
   }
 }
 
-function switchPos(num: number): number {
-  return (match.value?.chessboard?.height ?? 0) - 1 - num;
+function syncClockFromWs(remaining?: Record<string, number>) {
+  stopClock();
+  if (remaining) {
+    const w = (remaining as any).white ?? (remaining as any).WHITE ?? (remaining as any).White;
+    const b = (remaining as any).black ?? (remaining as any).BLACK ?? (remaining as any).Black;
+    if (typeof w === "number") times.set('WHITE', w);
+    if (typeof b === "number") times.set('BLACK', b);
+  }
+  if (!end.open) startClock();
 }
 
-function toGridKeyFromChess(pos: Position) {
-  const row = switchPos(pos.y);
-  const col = pos.x;
-  return keyOf(row, col);
-}
+// --------------------------------------------------------------------------------------------
 
-/*function toGridCoords(pos: Position) {
-  return {
-    row: (match.value?.chessboard?.height ?? 0) - 1 - pos.y,
-    col: pos.x,
-  };
-}*/
-
-
-  // second click -> try move via HTTP
-  // sendMove(gameId, move).catch(e => {
-  //   toast.error(e?.response?.data?.message || "Illegaler Zug");
-  // }).finally(() => {
-  //   selected.value = null;
-  //   highlights.value = [];
-  // });
-
-function onSendChat(){
-  console.log(match.value)
-  const text = chatInput.value.trim();
-  if (!text) return;
-  sendChat(gameId, text).catch(()=>{}); // Errors hier sind nicht kritisch
-  chatInput.value = "";
-}
 
 function onOfferDraw(){ offerDraw(gameId).catch(()=>{}); }
 
@@ -369,6 +378,26 @@ async function onResign(){
   });
 }
 
+// --------------------------------------------------------------------------------------------
+
+// ==============================
+// Section: Chat functionality
+// ==============================
+
+const chat = ref<{ id: number; text: string; timeFormatted?: string; color?: Color }[]>([]);
+const chatInput = ref("");
+// scroll container für Chat
+const chatContainer = ref<HTMLElement | null>(null);
+
+function onSendChat(){
+  console.log(match.value)
+  const text = chatInput.value.trim();
+  if (!text) return;
+  console.log("Text: " + text)
+  sendChat(gameId, text).catch(()=>{});
+  chatInput.value = "";
+}
+
 function formatTime(ms:number){
   const s = Math.floor(ms/1000);
   const m = Math.floor(s/60);
@@ -376,8 +405,66 @@ function formatTime(ms:number){
   return `${m}:${ss}`;
 }
 
+function formatChatTime(time: any) {
+  if (!time) return "";
+  try {
+    const d = (typeof time === "string" || typeof time === "number") ? new Date(time) : time instanceof Date ? time : new Date(String(time));
+    if (isNaN(d.getTime())) return "";
+    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  } catch {
+    return "";
+  }
+}
+
+function isGrouped(idx: number): boolean {
+  if (idx === 0) return false;
+
+  const cur = chat.value[idx];
+  const prev = chat.value[idx - 1];
+
+  if (!cur || !prev) return false;
+
+  // gleiche Farbe?
+  if (cur.color !== prev.color) return false;
+
+  // optional: innerhalb 2 Minuten -> gruppieren
+  const t1 = cur.timeFormatted;
+  const t2 = prev.timeFormatted;
+
+  if (t1 && t2) {
+    try {
+      const d1 = new Date("1970-01-01T" + t1); // Dummy-Datum mit Uhrzeit
+      const d2 = new Date("1970-01-01T" + t2);
+      const delta = Math.abs(d1.getTime() - d2.getTime());
+      if (delta > 2 * 60 * 1000) return false; // mehr als 2 Minuten Abstand
+    } catch {
+      return false;
+    }
+  }
+  return true;
+}
+
+watch(chat, async () => {
+  await nextTick();
+  try {
+    if (chatContainer.value) {
+      chatContainer.value.scrollTop = chatContainer.value.scrollHeight;
+    }
+  } catch {
+    // ignore scroll errors
+  }
+});
+
+
+// --------------------------------------------------------------------------------------------
+
+// ====================
+// Section: Mounting
+// ====================
+
 // ----- WS handling: subscribe topic/game/{gameId}
 let offGameHandler: (()=>void)|null = null;
+
 
 onMounted(async () => {
   const token = localStorage.getItem("token") || undefined;
@@ -385,52 +472,124 @@ onMounted(async () => {
   ws.subscribeGame(gameId);
   offGameHandler = ws.onGameMessage(gameId, handleGameEvent);
 
-  rebuildCells();
+  buildCells();
   console.log("mount: rebuild cells")
+  await initialisePlayers();
+  console.log("mount: initialise players")
 });
 
-onBeforeUnmount(() => {
-  offGameHandler?.();
-  ws.unsubscribeGame(gameId);
-});
-
-onBeforeUnmount(() => {
-  offGameHandler?.();
-  ws.unsubscribeGame(gameId);
-  if (resizeObs && boardWrap.value?.parentElement) {
-    //resizeObs.unobserve(boardWrap.value.parentElement);
+async function initialisePlayers() {
+  if (match.value == undefined) {
+    throw new Error('Match is not defined!')
   }
+
+  const color = match.value?.color;
+  if (color == undefined) {throw new Error('Color is undefined');}
+  const user = await getUser();
+  players.value.set(color, user);
+  for (const opp of match.value?.opponents) {
+    const oppUser: User = await getUserWithUsername(opp.username);
+    players.value.set(opp.color, oppUser)
+  }
+
+  for (const p of players.value.keys()) {
+    times.set(p, match.value.chessboard.initial_time)
+  }
+}
+
+onBeforeUnmount(() => {
+  offGameHandler?.();
+  ws.unsubscribeGame(gameId);
   stopClock();
 });
 
+// --------------------------------------------------------------------------------------------
+
+// ====================================
+// Section: Web socket event handler
+// ====================================
 
 function handleGameEvent(msg:any){
   switch (msg.type) {
+
     case "MOVE_APPLIED": {
-      const move: Move = msg.move;
+      const move: Move = msg.details.move;
       console.log(move)
 
-      const fromCellIndex = cells.value.findIndex(cell => cell.key === keyOf(switchPos(move.from.y), move.from.x));
-      const toCellIndex = cells.value.findIndex(cell => cell.key === keyOf(switchPos(move.to.y), move.to.x));
+      const fromCellIndex = cells.value.findIndex(cell => cell.key === keyOf(move.from.x, move.from.y));
+      const toCellIndex = cells.value.findIndex(cell => cell.key === keyOf(move.to.x, move.to.y));
 
       const piece: Piece = {type: move.piece.type, position: {x: move.to.x, y: move.to.y}, color: move.piece.color}
 
-      console.log("Piece: " + piece)
-
       if (fromCellIndex !== -1 && toCellIndex !== -1) {
-        cells.value[fromCellIndex] = { ...cells.value[fromCellIndex], piece: null };
-        cells.value[toCellIndex] = { ...cells.value[toCellIndex], piece: piece };
+        cells.value[fromCellIndex].piece = null;
+        cells.value[toCellIndex].piece = piece;
+      }
+
+      const color: Color = piece.color;
+      let y: number;
+      if (color == "WHITE") {
+        y = 0;
+      } else {
+        y = board.height - 1;
+      }
+
+      if (move.flag == 'CASTLE_KING') {
+        const cellFrom: Cell = cellAt(board.width - 1, y);
+        const cellTo: Cell = cellAt(board.width - 3, y);
+        if (cellFrom.piece == null) {
+          throw new Error("Cell error");
+        }
+        const rook: Piece = cellFrom.piece;
+        cellFrom.piece = null;
+        cellTo.piece = rook;
+      }
+
+      if (move.flag == 'CASTLE_QUEEN') {
+        const cellFrom: Cell = cellAt(0, y);
+        const cellTo: Cell = cellAt(3, y);
+        if (cellFrom.piece == null) {
+          throw new Error("Cell error");
+        }
+        const rook: Piece = cellFrom.piece;
+        cellFrom.piece = null;
+        cellTo.piece = rook;
       }
 
       turn.value = (turn.value === "WHITE") ? "BLACK" : "WHITE";
-      syncClockFromWs(msg.remainingTime, turn.value );
+      syncClockFromWs(msg.details.remainingTime);
       clearHighlights();
       console.log("Moved played")
       break;
     }
+
     case "CHAT": {
-      // payload: { id, sender, text }
-      chat.value.push(msg.payload);
+      const details = msg.details;
+      const text = details.msg;
+      const timeRaw = details.time;
+      const color = details.color;
+
+      const timeFormatted = formatChatTime(timeRaw);
+
+      const item = {
+        id: Date.now() + Math.floor(Math.random() * 1000),
+        text,
+        timeFormatted,
+        color: color,
+      };
+
+      chat.value.push(item);
+
+      // Auto-scroll to bottom after DOM updated
+      nextTick(() => {
+        try {
+          if (chatContainer.value) {
+            chatContainer.value.scrollTop = chatContainer.value.scrollHeight;
+          }
+        } catch (e) {
+          // ignore scroll errors
+        }
+      });
       break;
     }
     case "GAME_ENDED": {
@@ -439,12 +598,6 @@ function handleGameEvent(msg:any){
       end.winner = (winner === "WHITE" || winner === "BLACK") ? winner : null;
       end.endFlag = typeof endFlag === "string" ? endFlag : "UNSPECIFIED";
       stopClock();
-      break;
-    }
-    case "CLOCK_SYNC": {
-      const { WHITE, BLACK } = msg.payload || {};
-      if (typeof WHITE === "number") white.time = WHITE;
-      if (typeof BLACK === "number") black.time = BLACK;
       break;
     }
     case "GAME_OVER": {
@@ -457,11 +610,15 @@ function handleGameEvent(msg:any){
   }
 }
 
-import { computed } from "vue";
+// --------------------------------------------------------------------------------------------
 
-const winnerPlayer = computed(() => {
-  if (end.winner === "WHITE") return white;
-  if (end.winner === "BLACK") return black;
+// ===========================
+// Section: End game pop up
+// ===========================
+
+const winnerPlayer: any = computed(() => {
+  if (end.winner === "WHITE") return players.value.get('WHITE');
+  if (end.winner === "BLACK") return players.value.get('BLACK');
   return { name: "—", avatar: "/assets/default-avatar.png" } as any;
 });
 
@@ -497,9 +654,6 @@ function onBack(){
   router.push('/lobby');
 }
 
-import ConfirmModal from "../components/ConfirmModal.vue";
-import router from "../router";
-
 const confirm = reactive({
   open: false,
   title: "Aktion bestätigen",
@@ -533,12 +687,20 @@ function onConfirmCancel(){
   confirm._resolve(false);
 }
 
+//TODO:
+function getAvatar(user: User): string {
+  return String(user.username);
+}
+
+// --------------------------------------------------------------------------------------------
+
 </script>
 
 <style scoped>
 .board {
   display: grid;
   gap: 4px;
+  max-height: 100%;
 }
 .cell {
   width: 100%;
@@ -649,5 +811,96 @@ function onConfirmCancel(){
 .mini-avatar img { width:100%; height:100%; object-fit:cover; }
 .mini-name { font-size:.9rem; opacity:.9; }
 .draw-center { font-weight:800; font-size:1.25rem; opacity:.9; }
+
+.chat-line {
+  margin-bottom: 6px;
+  display: block;
+  line-height: 1.2;
+  padding: 2px 6px;
+  border-radius: 6px;
+}
+.chat-line.is-white { background: rgba(255,255,255,0.06); color: #000; }
+.chat-line.is-black { background: rgba(0,0,0,0.12); color: #fff; }
+
+.input-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.form-control {
+  width: 100%;
+  margin-bottom: 10px;
+  resize: none;
+}
+
+.button-container {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* Chat layout */
+.chat { height: 80vh; display: flex; flex-direction: column; }
+.chat-messages { flex: 1; overflow-y: auto; padding: 6px; scroll-behavior: smooth; }
+
+/* eine Nachricht (Block) */
+.chat-line {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 8px;
+  max-width: 100%;
+}
+
+/* Wenn grouped: weniger Abstand und keine meta-line */
+.chat-line.grouped { margin-top: -6px; margin-bottom: 6px; }
+
+/* Meta: Name + Zeit */
+.chat-meta { display: flex; gap: 8px; align-items: center; color: var(--muted); }
+.chat-name { font-weight: 600; }
+.chat-time { color: var(--muted); font-size: 0.72rem; margin-left: 10px; }
+
+/* Bubble */
+.chat-bubble {
+  padding: 8px 10px;
+  border-radius: 10px;
+  max-width: 100%;
+  white-space: pre-wrap;            /* behalte newline im text */
+  overflow-wrap: anywhere;         /* zwingt langes Wort zum umbrechen (beste Kompatibilität) */
+  word-break: break-word;          /* fallback */
+  line-height: 1.3;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.25);
+  font-size: 0.95rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.chat-text {
+  flex: 1;
+}
+
+/* Farben pro Spieler (verwende Klassen is-white / is-black durch m.color) */
+/* Passe die alpha-Werte nach Geschmack an, wichtig ist Kontrast! */
+.chat-line.is-white .chat-bubble {
+  background: rgba(255,255,255,0.08);
+  color: #0b0b0b; /* dunkles text für helle bubble */
+}
+.chat-line.is-black .chat-bubble {
+  background: rgba(255,255,255,0.03);
+  color: var(--text); /* hellen text */
+}
+
+.chat-line.is-white .chat-bubble::before { background: rgba(255,255,255,0.22); }
+.chat-line.is-black .chat-bubble::before { background: rgba(0,0,0,0.4); }
+
+/* Input area */
+.chat-input-row { display: flex; flex-direction: column; }
+.chat-input { resize: none; min-height: 42px; max-height: 140px; }
+
+/* Mobil: weniger Höhe falls nötig */
+@media (max-width: 1199px) {
+  .chat { height: auto; } /* erlaubt natürliche Größe auf kleinen Bildschirmen (chat unter dem board) */
+}
+
+
 
 </style>

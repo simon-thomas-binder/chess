@@ -41,5 +41,5 @@ export async function resign(gameId: string|number) {
 }
 
 export async function sendChat(gameId: string|number, text: string) {
-    return api.post(`/games/${gameId}/chat`, { text });
+    return api.post(`/chess/session/${gameId}/msg`, { text });
 }

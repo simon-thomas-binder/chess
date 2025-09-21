@@ -4,6 +4,7 @@ import com.example.backend.dto.Game.MoveDto;
 import com.example.backend.dto.Game.Player;
 import com.example.backend.dto.Game.PositionDto;
 import com.example.backend.dto.Game.piece.Piece;
+import com.example.backend.entity.ChatMessage;
 import com.example.backend.entity.Game;
 import com.example.backend.entity.GameParticipant;
 import com.example.backend.entity.Move;
@@ -13,6 +14,7 @@ import com.example.backend.enums.GameEndFlag;
 import com.example.backend.enums.GameStatus;
 import com.example.backend.exception.NotAuthorizedException;
 import com.example.backend.exception.ValidationException;
+import com.example.backend.repository.ChatMessageRepository;
 import com.example.backend.repository.GameParticipantRepository;
 import com.example.backend.repository.GameRepository;
 import com.example.backend.repository.MoveRepository;
@@ -173,10 +175,7 @@ public class GameSession {
         if (gameOver) {
             throw new ValidationException("This game has already ended");
         }
-        Player player = players.stream().filter(p -> p.getUsername().equals(username)).findFirst().orElse(null);
-        if (player == null) {
-            throw new NotAuthorizedException("You are not player in this game");
-        }
+        Player player = getPlayer(username);
         players.remove(player);
         if (players.size() == 1) {
             Color winner = players.getFirst().getColor();
@@ -225,5 +224,21 @@ public class GameSession {
                 wsService.sendGameEnded(GameEndFlag.STALEMATE, null);
             }
         }
+    }
+
+    public void msg(String msg, String username, ChatMessageRepository repository) {
+        Player player = getPlayer(username);
+
+        ChatMessage message = new ChatMessage();
+        message.setMessage(msg);
+        message.setGame(game);
+        message.setSender(player.getColor());
+        message = repository.save(message);
+
+        wsService.sendChatEvent(msg, player.getColor(), message.getCreatedAt());
+    }
+
+    private Player getPlayer(String username) {
+        return players.stream().filter(p -> p.getUsername().equals(username)).findFirst().orElseThrow(() -> new ValidationException("You are no player in this game"));
     }
 }

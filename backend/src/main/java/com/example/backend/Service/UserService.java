@@ -15,6 +15,14 @@ public interface UserService {
     User getUser();
 
     /**
+     * Gets the user based on the provided username
+     *
+     * @param username of the user
+     * @return the user if it exists
+     */
+    User getUser(String username);
+
+    /**
      * Creates a user in the database.
      *
      * @param createUserDto user to create

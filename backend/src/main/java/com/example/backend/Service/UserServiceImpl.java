@@ -44,8 +44,12 @@ public class UserServiceImpl implements UserService {
         if (auth == null || !auth.isAuthenticated()) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED);
         }
-        String username = auth.getName();
-        log.debug("Getting user {}", username);
+        return getUser(auth.getName());
+    }
+
+    @Override
+    public User getUser(String username) {
+        log.trace("getUser({})", username);
         return userRepository.findByUsername(username)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
     }

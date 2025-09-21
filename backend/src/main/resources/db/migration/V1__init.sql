@@ -29,6 +29,14 @@ create table game (
                       created_at timestamptz not null default now()
 );
 
+create table chat_message (
+                              id bigserial primary key,
+                              game_id bigint not null references game(id) on delete cascade,
+                              message text not null,
+                              sender color not null,
+                              created_at timestamptz not null default now()
+);
+
 create table game_participant (
                                   id bigserial primary key,
                                   game_id bigint not null references game(id) on delete cascade,

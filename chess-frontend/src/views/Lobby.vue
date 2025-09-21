@@ -227,9 +227,9 @@ onMounted(async () => {
 
   ws.onUserMessage((msg) => {
     if (msg.type === "MATCH_FOUND") {
-      const { gameId, color, opponents, chessboard } = msg.payload || {};
+      const { gameId, color, opponents, chessboard } = msg.details || {};
       if (gameId) {
-        console.log(msg.payload)
+        console.log(msg.details)
         matchStore.setMatch({ gameId, color, opponents, chessboard });
         router.push({ name: "Game", params: { id: String(gameId) } });
       }

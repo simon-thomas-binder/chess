@@ -13,6 +13,8 @@ import java.util.List;
 
 public class Pawn extends Piece {
 
+    private boolean isEnPassant = false;
+
     public Pawn(PositionDto position, Color color, PieceType type, boolean hasMoved) {
         super(position, color, type, hasMoved);
     }
@@ -28,10 +30,9 @@ public class Pawn extends Piece {
             dir = 1;
         }
 
-
         for (Piece piece : board.pieces()) {
-            if (new PositionDto(this.position.x() + 1, this.position.y() + dir).equals(piece.getPosition()) ||
-                    new PositionDto(this.position.x() - 1, this.position.y() + dir).equals(piece.getPosition())) {
+            if ((new PositionDto(this.position.x() + 1, this.position.y() + dir).equals(piece.getPosition()) ||
+                    new PositionDto(this.position.x() - 1, this.position.y() + dir).equals(piece.getPosition())) && piece.getColor() != this.color) {
                 moves.add(new MoveDto(this.position, piece.position, this, MoveFlag.CAPTURE, null));
             }
         }
@@ -50,6 +51,12 @@ public class Pawn extends Piece {
         }
 
         return checkMoves(moves, board, validateForCheck);
+    }
+
+    @Override
+    public void massageMove() {
+        isEnPassant = !this.hasMoved;
+        super.massageMove();
     }
 
     @Override

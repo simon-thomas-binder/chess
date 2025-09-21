@@ -7,6 +7,7 @@ import com.example.backend.enums.Color;
 import com.example.backend.enums.GameEndFlag;
 import com.example.backend.enums.GameStatus;
 
+import java.time.Instant;
 import java.util.List;
 
 public interface WsService {
@@ -36,4 +37,12 @@ public interface WsService {
      * @param winner of the game (can be null!)
      */
     void sendGameEnded(GameEndFlag flag, Color winner);
+
+    /**
+     * Sends a chat event by the player with given color
+     *
+     * @param msg message to send
+     * @param color of the player
+     */
+    void sendChatEvent(String msg, Color color, Instant time);
 }
