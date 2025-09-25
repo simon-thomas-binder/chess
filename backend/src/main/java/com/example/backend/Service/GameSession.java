@@ -26,6 +26,7 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Queue;
@@ -130,7 +131,7 @@ public class GameSession {
      *
      * @param username of the player surrendering
      */
-    public void resign(String username) {
+    public synchronized void resign(String username) {
         gameOverValidation();
         Player player = getPlayer(username);
         players.remove(player);
@@ -161,8 +162,8 @@ public class GameSession {
     }
 
     private void gameEnd(GameEndFlag flag, Color winner) {
-        safe(Game.endGame(game, flag, winner));
         gameOver = true;
+        safe(Game.endGame(game, flag, winner));
         wsService.sendGameEnded(flag, winner);
         timeControl.stop();
     }
@@ -181,5 +182,50 @@ public class GameSession {
         if (gameOver) {
             throw new NotAuthorizedException("This game has already ended");
         }
+    }
+
+    private final List<Player> playersWantingRemi = new ArrayList<>();
+    private boolean drawOffer;
+
+    synchronized public void offerDraw(String username) {
+        gameOverValidation();
+        Player player = getPlayer(username);
+        if (drawOffer) {
+            throw new ValidationException("Draw has already been offered");
+        }
+        if (turn != player.color()) {
+            throw new ValidationException("You can not offer a draw if you are not at play");
+        }
+        drawOffer = true;
+        playersWantingRemi.add(player);
+        wsService.sendDrawOffer();
+    }
+
+    synchronized public void acceptDraw(String username) {
+        gameOverValidation();
+        Player player = getPlayer(username);
+        if (!drawOffer) {
+            throw new ValidationException("Draw has not been offered");
+        }
+        if (turn == player.color()) {
+            throw new ValidationException("You can not accept your own draw offer");
+        }
+        if (playersWantingRemi.contains(player)) {
+            throw new ValidationException("Draw has already been accepted");
+        }
+        playersWantingRemi.add(player);
+        if (new HashSet<>(playersWantingRemi).equals(new HashSet<>(players))) {
+            gameEnd(GameEndFlag.DRAW_AGREEMENT, null);
+        }
+    }
+
+    synchronized public void declineDraw(String username) {
+        gameOverValidation();
+        getPlayer(username);
+        if (!drawOffer) {
+            throw new ValidationException("Draw has not been offered");
+        }
+        drawOffer = false;
+        playersWantingRemi.clear();
     }
 }

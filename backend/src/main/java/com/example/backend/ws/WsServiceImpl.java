@@ -85,4 +85,10 @@ public class WsServiceImpl implements WsService {
         details.put("time", time);
         sendMessage("game/" + gameId, details, WsTypes.CHAT);
     }
+
+    @Override
+    public void sendDrawOffer() {
+        Map<String, Object> details = new HashMap<>();
+        sendMessage("game/" + gameId, details, WsTypes.DRAW_OFFER);
+    }
 }

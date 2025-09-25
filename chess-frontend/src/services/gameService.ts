@@ -33,7 +33,15 @@ export async function sendMove(gameId: string|number, move: Move) {
 }
 
 export async function offerDraw(gameId: string|number) {
-    return api.post(`/games/${gameId}/draw`);
+    return api.post(`/chess/session/${gameId}/draw`);
+}
+
+export async function acceptDraw(gameId: string|number) {
+    return api.post(`/chess/session/${gameId}/draw/accept`);
+}
+
+export async function declineDraw(gameId: string|number) {
+    return api.post(`/chess/session/${gameId}/draw/decline`);
 }
 
 export async function resign(gameId: string|number) {

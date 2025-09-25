@@ -57,48 +57,9 @@
       </div>
 
       <!-- Right section: Chat -->
-      <div class="col-12 col-xl-3"> <!-- optional: chat etwas breiter -->
-        <div class="card--glass p-3 chat">
-          <h6 class="fw-semibold mb-2">Chat</h6>
-
-          <!-- messages -->
-          <div class="chat-messages" ref="chatContainer" role="log" aria-live="polite">
-            <div
-                v-for="(m, idx) in chat"
-                :key="m.id"
-                :class="['chat-line', m.color, { grouped: isGrouped(idx) }]"
-            >
-              <!-- Meta shown only if not grouped -->
-              <div v-if="!isGrouped(idx)" class="chat-meta">
-                <strong class="chat-name">{{ players.get(m.color ?? 'WHITE')?.displayname ?? '-' }}</strong>
-              </div>
-
-              <!-- Bubble (preserve linebreaks) -->
-              <div class="chat-bubble" :title="m.timeFormatted">
-                <span class="chat-text" v-text="m.text"></span>
-              </div>
-            </div>
-          </div>
-
-          <!-- input -->
-          <div class="mt-2 chat-input-row">
-      <textarea
-          v-model="chatInput"
-          class="form-control chat-input"
-          @keydown.enter.prevent="onSendChat"
-            @keydown.shift.enter.stop
-            rows="2"
-            placeholder="Nachricht…"
-            >
-            </textarea>
-
-            <div class="d-flex justify-content-end mt-2">
-              <button class="btn btn-accent" @click="onSendChat">Senden</button>
-            </div>
-          </div>
-        </div>
+      <div class="col-12 col-xl-3">
+        <Chat :chat="chat" :players="players" @send="onSendChat" />
       </div>
-
 
       <!-- End-modal Overlay -->
       <div v-if="end.open" class="end-overlay" @click.self="end.open = false">
@@ -168,7 +129,7 @@
 </template>
 
 <script setup lang="ts">
-import {computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch} from "vue";
+import {computed, onBeforeUnmount, onMounted, reactive, ref} from "vue";
 import {useRoute} from "vue-router";
 import {useWs} from "../composables/ws";
 import {getMoves, offerDraw, resign, sendChat, sendMove} from "../services/gameService";
@@ -178,6 +139,7 @@ import {useMatchStore} from "../stores/matchStore";
 import ConfirmModal from "../components/ConfirmModal.vue";
 import router from "../router";
 import {getUser, getUserWithUsername, type User} from "../services/authService.ts";
+import Chat from "../components/Chat.vue";
 
 // ----- Routing / IDs
 const route = useRoute();
@@ -385,17 +347,9 @@ async function onResign(){
 // ==============================
 
 const chat = ref<{ id: number; text: string; timeFormatted?: string; color?: Color }[]>([]);
-const chatInput = ref("");
-// scroll container für Chat
-const chatContainer = ref<HTMLElement | null>(null);
 
-function onSendChat(){
-  console.log(match.value)
-  const text = chatInput.value.trim();
-  if (!text) return;
-  console.log("Text: " + text)
-  sendChat(gameId, text).catch(()=>{});
-  chatInput.value = "";
+function onSendChat(text: string) {
+  sendChat(gameId, text).catch(() => {});
 }
 
 function formatTime(ms:number){
@@ -415,45 +369,6 @@ function formatChatTime(time: any) {
     return "";
   }
 }
-
-function isGrouped(idx: number): boolean {
-  if (idx === 0) return false;
-
-  const cur = chat.value[idx];
-  const prev = chat.value[idx - 1];
-
-  if (!cur || !prev) return false;
-
-  // gleiche Farbe?
-  if (cur.color !== prev.color) return false;
-
-  // optional: innerhalb 2 Minuten -> gruppieren
-  const t1 = cur.timeFormatted;
-  const t2 = prev.timeFormatted;
-
-  if (t1 && t2) {
-    try {
-      const d1 = new Date("1970-01-01T" + t1); // Dummy-Datum mit Uhrzeit
-      const d2 = new Date("1970-01-01T" + t2);
-      const delta = Math.abs(d1.getTime() - d2.getTime());
-      if (delta > 2 * 60 * 1000) return false; // mehr als 2 Minuten Abstand
-    } catch {
-      return false;
-    }
-  }
-  return true;
-}
-
-watch(chat, async () => {
-  await nextTick();
-  try {
-    if (chatContainer.value) {
-      chatContainer.value.scrollTop = chatContainer.value.scrollHeight;
-    }
-  } catch {
-    // ignore scroll errors
-  }
-});
 
 
 // --------------------------------------------------------------------------------------------
@@ -579,17 +494,6 @@ function handleGameEvent(msg:any){
       };
 
       chat.value.push(item);
-
-      // Auto-scroll to bottom after DOM updated
-      nextTick(() => {
-        try {
-          if (chatContainer.value) {
-            chatContainer.value.scrollTop = chatContainer.value.scrollHeight;
-          }
-        } catch (e) {
-          // ignore scroll errors
-        }
-      });
       break;
     }
     case "GAME_ENDED": {
@@ -600,9 +504,8 @@ function handleGameEvent(msg:any){
       stopClock();
       break;
     }
-    case "GAME_OVER": {
-      // payload: { reason: "checkmate"|"resign"|"draw", winner: "WHITE"|"BLACK"|null }
-      toast.info(`Spielende: ${msg.payload.reason}`);
+    case "DRAW_OFFER": {
+      toast.info(`Ihnen wurde ein Remi angeboten`);
       break;
     }
     default:
@@ -812,15 +715,6 @@ function getAvatar(user: User): string {
 .mini-name { font-size:.9rem; opacity:.9; }
 .draw-center { font-weight:800; font-size:1.25rem; opacity:.9; }
 
-.chat-line {
-  margin-bottom: 6px;
-  display: block;
-  line-height: 1.2;
-  padding: 2px 6px;
-  border-radius: 6px;
-}
-.chat-line.is-white { background: rgba(255,255,255,0.06); color: #000; }
-.chat-line.is-black { background: rgba(0,0,0,0.12); color: #fff; }
 
 .input-group {
   display: flex;
@@ -837,70 +731,5 @@ function getAvatar(user: User): string {
   display: flex;
   justify-content: flex-end;
 }
-
-/* Chat layout */
-.chat { height: 80vh; display: flex; flex-direction: column; }
-.chat-messages { flex: 1; overflow-y: auto; padding: 6px; scroll-behavior: smooth; }
-
-/* eine Nachricht (Block) */
-.chat-line {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin-bottom: 8px;
-  max-width: 100%;
-}
-
-/* Wenn grouped: weniger Abstand und keine meta-line */
-.chat-line.grouped { margin-top: -6px; margin-bottom: 6px; }
-
-/* Meta: Name + Zeit */
-.chat-meta { display: flex; gap: 8px; align-items: center; color: var(--muted); }
-.chat-name { font-weight: 600; }
-.chat-time { color: var(--muted); font-size: 0.72rem; margin-left: 10px; }
-
-/* Bubble */
-.chat-bubble {
-  padding: 8px 10px;
-  border-radius: 10px;
-  max-width: 100%;
-  white-space: pre-wrap;            /* behalte newline im text */
-  overflow-wrap: anywhere;         /* zwingt langes Wort zum umbrechen (beste Kompatibilität) */
-  word-break: break-word;          /* fallback */
-  line-height: 1.3;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.25);
-  font-size: 0.95rem;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-.chat-text {
-  flex: 1;
-}
-
-/* Farben pro Spieler (verwende Klassen is-white / is-black durch m.color) */
-/* Passe die alpha-Werte nach Geschmack an, wichtig ist Kontrast! */
-.chat-line.is-white .chat-bubble {
-  background: rgba(255,255,255,0.08);
-  color: #0b0b0b; /* dunkles text für helle bubble */
-}
-.chat-line.is-black .chat-bubble {
-  background: rgba(255,255,255,0.03);
-  color: var(--text); /* hellen text */
-}
-
-.chat-line.is-white .chat-bubble::before { background: rgba(255,255,255,0.22); }
-.chat-line.is-black .chat-bubble::before { background: rgba(0,0,0,0.4); }
-
-/* Input area */
-.chat-input-row { display: flex; flex-direction: column; }
-.chat-input { resize: none; min-height: 42px; max-height: 140px; }
-
-/* Mobil: weniger Höhe falls nötig */
-@media (max-width: 1199px) {
-  .chat { height: auto; } /* erlaubt natürliche Größe auf kleinen Bildschirmen (chat unter dem board) */
-}
-
-
 
 </style>

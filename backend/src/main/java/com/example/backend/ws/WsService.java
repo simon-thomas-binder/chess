@@ -46,4 +46,9 @@ public interface WsService {
      * @param color of the player
      */
     void sendChatEvent(String msg, Color color, Instant time);
+
+    /**
+     * Sends a draw offer to every player
+     */
+    void sendDrawOffer();
 }
