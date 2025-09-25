@@ -27,31 +27,19 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Queue;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.TimeUnit;
 
 /**
  * GameSession objects that stores data for the chess game
  */
 public class GameSession {
 
-    // Scheduler fot the game clock
-    private static final ScheduledExecutorService SCHEDULER = Executors.newScheduledThreadPool(
-            Math.max(2, Runtime.getRuntime().availableProcessors() / 2), r -> {
-                Thread t = new Thread(r, "game-clock");
-                t.setDaemon(true);
-                return t;
-            });
-
-    private ScheduledFuture<?> currentTimerTask;
-
     private final GameRepository gameRepository;
     private final MoveRepository moveRepository;
     private final WsService wsService;
 
+    private final TimeControl timeControl;
     private final Chessboard board;
     private final List<Player> players = new ArrayList<>();
 
@@ -61,7 +49,6 @@ public class GameSession {
     private int ply = 0;
 
     private Game game;
-    private Long lastTurnStartMs = null;
 
     // Constructor
     public GameSession(Chessboard board, List<User> users,
@@ -72,11 +59,11 @@ public class GameSession {
         this.gameRepository = gameRepository;
         this.moveRepository = moveRepository;
         this.board = board;
-        this.game = gameRepository.save(Game.newGame(board));
+        this.game = gameRepository.save(new Game(board));
         this.wsService = new WsServiceImpl(ws, game.getId());
 
         Queue<Color> colors = new ArrayDeque<>(Arrays.asList(Color.WHITE, Color.BLACK));
-
+        this.timeControl = new TimeControl(this, board.initial_time(), board.increment(), board.delay(), colors.stream().toList());
         for (User user : users) {
             Color color = colors.poll();
 
@@ -84,13 +71,8 @@ public class GameSession {
                 throw new IllegalStateException("User " + user + " has no color");
             }
 
-            players.add(new Player(user.getUsername(), color, board.initial_time()));
-
-            GameParticipant participant = new GameParticipant();
-            participant.setGame(game);
-            participant.setUser(user);
-            participant.setColor(color);
-            gameParticipantRepository.save(participant);
+            players.add(new Player(user.getUsername(), color));
+            gameParticipantRepository.save(new GameParticipant(game, user, color));
         }
         wsService.sendMatchFound(players, board);
     }
@@ -100,24 +82,14 @@ public class GameSession {
     }
 
     public Collection<MoveDto> getMoves(PositionDto position, String username) {
-        Color color = null;
-
-        for (Player player : players) {
-            if (player.getUsername().equals(username)) {
-                color = player.getColor();
-            }
-        }
-
-        if (color == null) {
-            throw new NotAuthorizedException("You are no player in this game");
-        }
+        gameOverValidation();
+        Color color = getPlayer(username).color();
 
         if (color != turn) {
             return new ArrayList<>();
         }
 
-        Color finalColor = color;
-        Piece piece = board.pieces().stream().filter(p -> p.getColor().equals(finalColor))
+        Piece piece = board.pieces().stream().filter(p -> p.getColor().equals(color))
                 .filter(p -> p.getPosition().x() == position.x() && p.getPosition().y() == position.y()).findFirst().orElse(null);
 
         if (piece == null) {
@@ -128,42 +100,29 @@ public class GameSession {
     }
 
     public synchronized void playMove(MoveDto move, String username) {
-
-        if (gameOver) {
-            throw new NotAuthorizedException("This game has already ended");
-        }
-
         Collection<MoveDto> moves = this.getMoves(move.from(), username);
 
         if (!moves.contains(move)) {
             throw new NotAuthorizedException("You are not authorized to play this move");
         }
 
-        Player player = players.stream().filter(p -> p.getUsername().equals(username)).findFirst().orElse(null);
+        Player player = getPlayer(username);
 
-        if (player == null) {
-            throw new IllegalStateException("This should not happen, player is null");
-        }
-
-        if (lastTurnStartMs != null) {
-            player.setRemainingTime(player.getRemainingTime() - (System.currentTimeMillis() - lastTurnStartMs) + board.delay());
-        } else {
+        if (game.getStatus() != GameStatus.ACTIVE) {
             game.setStatus(GameStatus.ACTIVE);
             safe(game);
         }
 
-        lastTurnStartMs = System.currentTimeMillis();
-        moveRepository.save(Move.newMove(move, game, player, ply));
-        wsService.sendMoveApplied(move, turn, players, game.getStatus());
+        Map<Color, Long> times = timeControl.onMovePlayed(player.color());
+        moveRepository.save(new Move(move, game, player, times.get(player.color()), ply));
+        wsService.sendMoveApplied(move, turn, times, game.getStatus());
 
         board.move(move);
         ply++;
-        player.setRemainingTime(player.getRemainingTime() + board.increment());
 
         turn = Color.getOtherColor(turn);
+        timeControl.startTurn(turn);
         gameEndCheck();
-
-        timer(players.stream().filter(p -> p.getColor().equals(turn)).findFirst().orElseThrow().getRemainingTime());
     }
 
     /**
@@ -172,16 +131,11 @@ public class GameSession {
      * @param username of the player surrendering
      */
     public void resign(String username) {
-        if (gameOver) {
-            throw new ValidationException("This game has already ended");
-        }
+        gameOverValidation();
         Player player = getPlayer(username);
         players.remove(player);
         if (players.size() == 1) {
-            Color winner = players.getFirst().getColor();
-            safe(Game.endGame(game, GameEndFlag.RESIGNATION, winner));
-            gameOver = true;
-            wsService.sendGameEnded(GameEndFlag.RESIGNATION, winner);
+            gameEnd(GameEndFlag.RESIGNATION, players.getFirst().color());
         }
     }
 
@@ -189,56 +143,43 @@ public class GameSession {
         this.game = gameRepository.save(game);
     }
 
-    // timer restart function
-    private synchronized void timer(long time) {
-
-        if (currentTimerTask != null) {
-            currentTimerTask.cancel(false);
-        }
-
-        currentTimerTask = SCHEDULER.schedule(this::timeUp, time, TimeUnit.MILLISECONDS);
-    }
-
-    // trigger for when the time for a player has run out
-    private void timeUp() {
-        Color color = this.turn;
-
-        players.remove(players.stream().filter(p -> p.getColor().equals(color)).findFirst().orElse(null));
+    public synchronized void timeUp(Color color) {
+        players.remove(players.stream().filter(p -> p.color().equals(color)).findFirst().orElse(null));
         if (players.size() == 1) {
-            Color winner = players.getFirst().getColor();
-            safe(Game.endGame(game, GameEndFlag.TIMEOUT, winner));
-            gameOver = true;
-            wsService.sendGameEnded(GameEndFlag.TIMEOUT, winner);
+            gameEnd(GameEndFlag.TIMEOUT, players.getFirst().color());
         }
     }
 
     private void gameEndCheck() {
         if (board.getAllMoves(turn).isEmpty()) {
-            gameOver = true;
             if (board.isInCheck(turn)) {
-                Color winner = Color.getOtherColor(turn);
-                safe(Game.endGame(game, GameEndFlag.CHECKMATE, winner));
-                wsService.sendGameEnded(GameEndFlag.CHECKMATE, winner);
+                gameEnd(GameEndFlag.CHECKMATE, Color.getOtherColor(turn));
             } else {
-                safe(Game.endGame(game, GameEndFlag.STALEMATE, null));
-                wsService.sendGameEnded(GameEndFlag.STALEMATE, null);
+                gameEnd(GameEndFlag.STALEMATE, null);
             }
         }
     }
 
+    private void gameEnd(GameEndFlag flag, Color winner) {
+        safe(Game.endGame(game, flag, winner));
+        gameOver = true;
+        wsService.sendGameEnded(flag, winner);
+        timeControl.stop();
+    }
+
     public void msg(String msg, String username, ChatMessageRepository repository) {
         Player player = getPlayer(username);
-
-        ChatMessage message = new ChatMessage();
-        message.setMessage(msg);
-        message.setGame(game);
-        message.setSender(player.getColor());
-        message = repository.save(message);
-
-        wsService.sendChatEvent(msg, player.getColor(), message.getCreatedAt());
+        ChatMessage message = repository.save(new ChatMessage(msg, player.color(), game));
+        wsService.sendChatEvent(msg, player.color(), message.getCreatedAt());
     }
 
     private Player getPlayer(String username) {
-        return players.stream().filter(p -> p.getUsername().equals(username)).findFirst().orElseThrow(() -> new ValidationException("You are no player in this game"));
+        return players.stream().filter(p -> p.username().equals(username)).findFirst().orElseThrow(() -> new ValidationException("You are no player in this game"));
+    }
+
+    private void gameOverValidation() {
+        if (gameOver) {
+            throw new NotAuthorizedException("This game has already ended");
+        }
     }
 }

@@ -38,4 +38,14 @@ public class GameParticipant {
     private Color color;
 
     private Integer ratingSnapshot;
+
+    public GameParticipant(Game game, User user, Color color) {
+        this.game = game;
+        this.user = user;
+        this.color = color;
+    }
+
+    public GameParticipant() {
+
+    }
 }

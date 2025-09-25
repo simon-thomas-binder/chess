@@ -9,6 +9,7 @@ import com.example.backend.enums.GameStatus;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 
 public interface WsService {
 
@@ -25,10 +26,10 @@ public interface WsService {
      *
      * @param move played
      * @param turn who is now on turn
-     * @param players of that game
+     * @param times of that game
      * @param status of that game
      */
-    void sendMoveApplied(MoveDto move, Color turn, List<Player> players, GameStatus status);
+    void sendMoveApplied(MoveDto move, Color turn, Map<Color, Long> times, GameStatus status);
 
     /**
      * Sends a game ending event

@@ -86,20 +86,21 @@ public class Move {
      * @param game game entity
      * @param player who plays this move
      * @param ply number of this move
-     * @return new move entity
      */
-    public static Move newMove(MoveDto move, Game game, Player player, int ply) {
-        Move moveEntity = new Move();
-        moveEntity.setGame(game);
-        moveEntity.setFrom(new Position(move.from().x(), move.from().y()));
-        moveEntity.setTo(new Position(move.to().x(), move.to().y()));
-        moveEntity.setMove(move.flag());
-        moveEntity.setActor(player.getColor());
-        moveEntity.setPiece(move.piece().getType());
-        moveEntity.setPly(ply);
-        moveEntity.setPromotionTo(move.promotionTo());
-        moveEntity.setServerReceivedAt(Instant.now());
-        moveEntity.setActorTimeLeftMsAfter(player.getRemainingTime());
-        return moveEntity;
+    public Move(MoveDto move, Game game, Player player, long timeLeft, int ply) {
+        this.setGame(game);
+        this.setFrom(new Position(move.from().x(), move.from().y()));
+        this.setTo(new Position(move.to().x(), move.to().y()));
+        this.setMove(move.flag());
+        this.setActor(player.color());
+        this.setPiece(move.piece().getType());
+        this.setPly(ply);
+        this.setPromotionTo(move.promotionTo());
+        this.setServerReceivedAt(Instant.now());
+        this.setActorTimeLeftMsAfter(timeLeft);
+    }
+
+    public Move() {
+
     }
 }

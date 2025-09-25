@@ -4,5 +4,6 @@ public enum WsTypes {
     MATCH_FOUND,
     MOVE_APPLIED,
     GAME_ENDED,
+    DRAW_OFFER,
     CHAT
 }

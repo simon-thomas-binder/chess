@@ -42,7 +42,23 @@ public class SessionEndpoint {
         return new ResponseEntity<>(HttpStatus.OK);
     }
 
-    //TODO: Remi endpoint
+    @PostMapping("/{id}/draw")
+    public ResponseEntity<Void> offerDraw(@PathVariable long id) {
+        gameSessionService.offerDraw(id);
+        return new ResponseEntity<>(HttpStatus.OK);
+    }
+
+    @PostMapping("/{id}/draw/accept")
+    public ResponseEntity<Void> acceptDraw(@PathVariable long id) {
+        gameSessionService.acceptDraw(id);
+        return new ResponseEntity<>(HttpStatus.OK);
+    }
+
+    @PostMapping("/{id}/draw/decline")
+    public ResponseEntity<Void> declineDraw(@PathVariable long id) {
+        gameSessionService.declineDraw(id);
+        return new ResponseEntity<>(HttpStatus.OK);
+    }
 
     @PostMapping("/{id}/msg")
     public ResponseEntity<Void> msg(@PathVariable long id, @RequestBody TextDto msg) {

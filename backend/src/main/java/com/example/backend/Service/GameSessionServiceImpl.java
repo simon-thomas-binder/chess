@@ -58,6 +58,21 @@ public class GameSessionServiceImpl implements GameSessionService {
     }
 
     @Override
+    public void offerDraw(long gameId) {
+
+    }
+
+    @Override
+    public void acceptDraw(long gameId) {
+
+    }
+
+    @Override
+    public void declineDraw(long gameId) {
+
+    }
+
+    @Override
     public void msg(long gameId, String msg) {
         log.info("Message received: {}", msg);
         getGameSession(gameId).msg(msg, userService.getUser().getUsername(), chatMessageRepository);
