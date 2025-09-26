@@ -87,8 +87,9 @@ public class WsServiceImpl implements WsService {
     }
 
     @Override
-    public void sendDrawOffer() {
-        Map<String, Object> details = new HashMap<>();
-        sendMessage("game/" + gameId, details, WsTypes.DRAW_OFFER);
+    public void sendDrawEvent(String details) {
+        Map<String, Object> d = new HashMap<>();
+        d.put("flag", details);
+        sendMessage("game/" + gameId, d, WsTypes.DRAW_EVENT);
     }
 }

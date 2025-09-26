@@ -118,6 +118,8 @@ public class GameSession {
         moveRepository.save(new Move(move, game, player, times.get(player.color()), ply));
         wsService.sendMoveApplied(move, turn, times, game.getStatus());
 
+        resetDraw();
+
         board.move(move);
         ply++;
 
@@ -185,7 +187,7 @@ public class GameSession {
     }
 
     private final List<Player> playersWantingRemi = new ArrayList<>();
-    private boolean drawOffer;
+    private boolean drawOffer = false;
 
     synchronized public void offerDraw(String username) {
         gameOverValidation();
@@ -198,7 +200,7 @@ public class GameSession {
         }
         drawOffer = true;
         playersWantingRemi.add(player);
-        wsService.sendDrawOffer();
+        wsService.sendDrawEvent("offer");
     }
 
     synchronized public void acceptDraw(String username) {
@@ -225,6 +227,11 @@ public class GameSession {
         if (!drawOffer) {
             throw new ValidationException("Draw has not been offered");
         }
+        resetDraw();
+        wsService.sendDrawEvent("decline");
+    }
+
+    private void resetDraw() {
         drawOffer = false;
         playersWantingRemi.clear();
     }

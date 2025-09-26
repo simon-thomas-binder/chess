@@ -15,8 +15,12 @@
         </div>
         <div class="card--glass p-3 mt-3">
           <div class="d-grid gap-2">
-            <button class="btn btn-danger" @click="onResign">Aufgeben</button>
-            <button class="btn btn-muted" @click="onOfferDraw">Remis anbieten</button>
+            <button v-if="!draw.showResponseDrawOptions.value" class="btn btn-danger" @click="onResign">Aufgeben</button>
+            <DrawButtons :show-offer-draw="draw.showOfferDraw"
+                         :show-response-draw-options="draw.showResponseDrawOptions"
+                         :on-accept-draw="draw.onAcceptDraw"
+                         :on-decline-draw="draw.onDeclineDraw"
+                         :on-offer-draw="draw.onOfferDraw"></DrawButtons>
           </div>
         </div>
       </div>
@@ -132,7 +136,7 @@
 import {computed, onBeforeUnmount, onMounted, reactive, ref} from "vue";
 import {useRoute} from "vue-router";
 import {useWs} from "../composables/ws";
-import {getMoves, offerDraw, resign, sendChat, sendMove} from "../services/gameService";
+import {getMoves, resign, sendChat, sendMove} from "../services/gameService";
 import {toast} from "../composables/toast";
 import {type Cell, type Chessboard, type Color, type Move, type Piece, positionToString} from "../models/chess.ts";
 import {useMatchStore} from "../stores/matchStore";
@@ -140,6 +144,9 @@ import ConfirmModal from "../components/ConfirmModal.vue";
 import router from "../router";
 import {getUser, getUserWithUsername, type User} from "../services/authService.ts";
 import Chat from "../components/Chat.vue";
+import {useClock} from "../composables/useClock.ts";
+import {useDraw} from "../composables/useDraw.ts";
+import DrawButtons from "../components/DrawButtons.vue";
 
 // ----- Routing / IDs
 const route = useRoute();
@@ -151,10 +158,14 @@ const ws = useWs();
 const matchStore = useMatchStore();
 const match = ref(matchStore.current);
 
+const thisPlayer = ref<Color>("WHITE");
+
 const turn = ref<Color>("WHITE");
 const moves = ref<any[]>([]);
 const players = ref<Map<Color, User>>(new Map());
-const times = reactive(new Map<Color, number>()) as unknown as Map<Color, number>;
+
+const draw = useDraw(gameId, turn, thisPlayer);
+
 
 // ----- helpers
 function keyOf(x: number, y: number): string { return `${x}:${y}`; }
@@ -168,7 +179,7 @@ function cellAt(x: number, y: number): Cell {
 }
 
 
-const end = reactive<{ open: boolean; winner: Color | null; endFlag: string }>({
+const end = ref<{ open: boolean; winner: Color | null; endFlag: string }>({
   open: false,
   winner: null,
   endFlag: "",
@@ -272,59 +283,13 @@ async function onCellClick(cell: Cell) {
 
 
 // ===============================
-// Section: Clock Functionality
+// Section: Clock Functionality2
 // ===============================
 
-let ticking: boolean = false;
-let lastTimestamp = 0;
-//Request Animation Frame ID
-let rafId = 0;
+const { times, stopClock, syncClockFromWs } = useClock(turn, end);
 
-function startClock() {
-  if (ticking) return;
-  ticking = true;
-  lastTimestamp = performance.now();
-  rafId = requestAnimationFrame(stepClock);
-}
-
-function stopClock() {
-  ticking = false;
-  cancelAnimationFrame(rafId);
-}
-
-function stepClock(ts: number) {
-  const dt = ts - lastTimestamp;
-  lastTimestamp = ts;
-
-  if (turn.value === "WHITE") {
-    const newW = Math.max(0, (times.get('WHITE') ?? 0) - dt);
-    times.set('WHITE', newW);
-  } else {
-    const newB = Math.max(0, (times.get('BLACK') ?? 0) - dt);
-    times.set('BLACK', newB);
-  }
-
-  if (ticking && !end.open && (times.get('WHITE') ?? 0) > 0 && (times.get('BLACK') ?? 0) > 0) {
-    rafId = requestAnimationFrame(stepClock);
-  } else {
-  }
-}
-
-function syncClockFromWs(remaining?: Record<string, number>) {
-  stopClock();
-  if (remaining) {
-    const w = (remaining as any).white ?? (remaining as any).WHITE ?? (remaining as any).White;
-    const b = (remaining as any).black ?? (remaining as any).BLACK ?? (remaining as any).Black;
-    if (typeof w === "number") times.set('WHITE', w);
-    if (typeof b === "number") times.set('BLACK', b);
-  }
-  if (!end.open) startClock();
-}
 
 // --------------------------------------------------------------------------------------------
-
-
-function onOfferDraw(){ offerDraw(gameId).catch(()=>{}); }
 
 async function onResign(){
   const ok = await askConfirm({
@@ -359,18 +324,6 @@ function formatTime(ms:number){
   return `${m}:${ss}`;
 }
 
-function formatChatTime(time: any) {
-  if (!time) return "";
-  try {
-    const d = (typeof time === "string" || typeof time === "number") ? new Date(time) : time instanceof Date ? time : new Date(String(time));
-    if (isNaN(d.getTime())) return "";
-    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  } catch {
-    return "";
-  }
-}
-
-
 // --------------------------------------------------------------------------------------------
 
 // ====================
@@ -400,6 +353,7 @@ async function initialisePlayers() {
 
   const color = match.value?.color;
   if (color == undefined) {throw new Error('Color is undefined');}
+  thisPlayer.value = color;
   const user = await getUser();
   players.value.set(color, user);
   for (const opp of match.value?.opponents) {
@@ -474,6 +428,7 @@ function handleGameEvent(msg:any){
       turn.value = (turn.value === "WHITE") ? "BLACK" : "WHITE";
       syncClockFromWs(msg.details.remainingTime);
       clearHighlights();
+      draw.resetDraw();
       console.log("Moved played")
       break;
     }
@@ -484,12 +439,10 @@ function handleGameEvent(msg:any){
       const timeRaw = details.time;
       const color = details.color;
 
-      const timeFormatted = formatChatTime(timeRaw);
-
       const item = {
         id: Date.now() + Math.floor(Math.random() * 1000),
         text,
-        timeFormatted,
+        timeFormatted: timeRaw,
         color: color,
       };
 
@@ -498,14 +451,23 @@ function handleGameEvent(msg:any){
     }
     case "GAME_ENDED": {
       const { winner, endFlag } = msg.details || {};
-      end.open = true;
-      end.winner = (winner === "WHITE" || winner === "BLACK") ? winner : null;
-      end.endFlag = typeof endFlag === "string" ? endFlag : "UNSPECIFIED";
+      end.value.open = true;
+      end.value.winner = (winner === "WHITE" || winner === "BLACK") ? winner : null;
+      end.value.endFlag = typeof endFlag === "string" ? endFlag : "UNSPECIFIED";
       stopClock();
       break;
     }
-    case "DRAW_OFFER": {
-      toast.info(`Ihnen wurde ein Remi angeboten`);
+    case "DRAW_EVENT": {
+      console.log("There is a draw event");
+      console.log("msg: " + msg.toString());
+      console.log("details: " + msg.details.flag.toString());
+
+      if (msg.details.flag == "offer") {
+        draw.drawEvent();
+      }
+      if (msg.details.flag == "decline") {
+        draw.resetDraw();
+      }
       break;
     }
     default:
@@ -520,8 +482,8 @@ function handleGameEvent(msg:any){
 // ===========================
 
 const winnerPlayer: any = computed(() => {
-  if (end.winner === "WHITE") return players.value.get('WHITE');
-  if (end.winner === "BLACK") return players.value.get('BLACK');
+  if (end.value.winner === "WHITE") return players.value.get('WHITE');
+  if (end.value.winner === "BLACK") return players.value.get('BLACK');
   return { name: "—", avatar: "/assets/default-avatar.png" } as any;
 });
 
@@ -547,11 +509,11 @@ function endText(flag: string, winner: Color | null): EndUi {
   }
 }
 
-const endUi = computed(() => endText(end.endFlag, end.winner));
+const endUi = computed(() => endText(end.value.endFlag, end.value.winner));
 
 function onRematch(){
   // TODO: hier API-Call für Revanche o. Route wechseln
-  end.open = false;
+  end.value.open = false;
 }
 function onBack(){
   router.push('/lobby');

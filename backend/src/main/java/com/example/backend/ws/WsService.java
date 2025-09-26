@@ -48,7 +48,11 @@ public interface WsService {
     void sendChatEvent(String msg, Color color, Instant time);
 
     /**
-     * Sends a draw offer to every player
+     * Sends a draw event to every player - options:
+     *  - a draw offer (in this case details should be "offer")
+     *  - a declining draw offer (int this case details should be "decline")
+     *
+     * @param detail - should be "o"
      */
-    void sendDrawOffer();
+    void sendDrawEvent(String detail);
 }
