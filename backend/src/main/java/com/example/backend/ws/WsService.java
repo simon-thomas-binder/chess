@@ -9,6 +9,7 @@ import com.example.backend.enums.GameStatus;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 
 public interface WsService {
 
@@ -25,10 +26,10 @@ public interface WsService {
      *
      * @param move played
      * @param turn who is now on turn
-     * @param players of that game
+     * @param times of that game
      * @param status of that game
      */
-    void sendMoveApplied(MoveDto move, Color turn, List<Player> players, GameStatus status);
+    void sendMoveApplied(MoveDto move, Color turn, Map<Color, Long> times, GameStatus status);
 
     /**
      * Sends a game ending event
@@ -45,4 +46,13 @@ public interface WsService {
      * @param color of the player
      */
     void sendChatEvent(String msg, Color color, Instant time);
+
+    /**
+     * Sends a draw event to every player - options:
+     *  - a draw offer (in this case details should be "offer")
+     *  - a declining draw offer (int this case details should be "decline")
+     *
+     * @param detail - should be "o"
+     */
+    void sendDrawEvent(String detail);
 }

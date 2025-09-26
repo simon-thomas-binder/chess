@@ -65,17 +65,18 @@ public class Game {
      * Sets up a new Game Entity
      *
      * @param board info
-     * @return new game object
      */
-    public static Game newGame(Chessboard board) {
-        Game game = new Game();
-        game.setBoardHeight(board.height());
-        game.setBoardWidth(board.width());
-        game.setIncrement(board.increment());
-        game.setDelay(board.delay());
-        game.setInitialTime(board.initial_time());
-        game.setStatus(GameStatus.PENDING);
-        return game;
+    public Game(Chessboard board) {
+        this.setBoardHeight(board.height());
+        this.setBoardWidth(board.width());
+        this.setIncrement(board.increment());
+        this.setDelay(board.delay());
+        this.setInitialTime(board.initial_time());
+        this.setStatus(GameStatus.PENDING);
+    }
+
+    public Game() {
+
     }
 
     /**

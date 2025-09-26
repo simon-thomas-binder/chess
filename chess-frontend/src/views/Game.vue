@@ -15,8 +15,12 @@
         </div>
         <div class="card--glass p-3 mt-3">
           <div class="d-grid gap-2">
-            <button class="btn btn-danger" @click="onResign">Aufgeben</button>
-            <button class="btn btn-muted" @click="onOfferDraw">Remis anbieten</button>
+            <button v-if="!draw.showResponseDrawOptions.value" class="btn btn-danger" @click="onResign">Aufgeben</button>
+            <DrawButtons :show-offer-draw="draw.showOfferDraw"
+                         :show-response-draw-options="draw.showResponseDrawOptions"
+                         :on-accept-draw="draw.onAcceptDraw"
+                         :on-decline-draw="draw.onDeclineDraw"
+                         :on-offer-draw="draw.onOfferDraw"></DrawButtons>
           </div>
         </div>
       </div>
@@ -57,48 +61,9 @@
       </div>
 
       <!-- Right section: Chat -->
-      <div class="col-12 col-xl-3"> <!-- optional: chat etwas breiter -->
-        <div class="card--glass p-3 chat">
-          <h6 class="fw-semibold mb-2">Chat</h6>
-
-          <!-- messages -->
-          <div class="chat-messages" ref="chatContainer" role="log" aria-live="polite">
-            <div
-                v-for="(m, idx) in chat"
-                :key="m.id"
-                :class="['chat-line', m.color, { grouped: isGrouped(idx) }]"
-            >
-              <!-- Meta shown only if not grouped -->
-              <div v-if="!isGrouped(idx)" class="chat-meta">
-                <strong class="chat-name">{{ players.get(m.color ?? 'WHITE')?.displayname ?? '-' }}</strong>
-              </div>
-
-              <!-- Bubble (preserve linebreaks) -->
-              <div class="chat-bubble" :title="m.timeFormatted">
-                <span class="chat-text" v-text="m.text"></span>
-              </div>
-            </div>
-          </div>
-
-          <!-- input -->
-          <div class="mt-2 chat-input-row">
-      <textarea
-          v-model="chatInput"
-          class="form-control chat-input"
-          @keydown.enter.prevent="onSendChat"
-            @keydown.shift.enter.stop
-            rows="2"
-            placeholder="Nachricht…"
-            >
-            </textarea>
-
-            <div class="d-flex justify-content-end mt-2">
-              <button class="btn btn-accent" @click="onSendChat">Senden</button>
-            </div>
-          </div>
-        </div>
+      <div class="col-12 col-xl-3">
+        <Chat :chat="chat" :players="players" @send="onSendChat" />
       </div>
-
 
       <!-- End-modal Overlay -->
       <div v-if="end.open" class="end-overlay" @click.self="end.open = false">
@@ -168,16 +133,20 @@
 </template>
 
 <script setup lang="ts">
-import {computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch} from "vue";
+import {computed, onBeforeUnmount, onMounted, reactive, ref} from "vue";
 import {useRoute} from "vue-router";
 import {useWs} from "../composables/ws";
-import {getMoves, offerDraw, resign, sendChat, sendMove} from "../services/gameService";
+import {getMoves, resign, sendChat, sendMove} from "../services/gameService";
 import {toast} from "../composables/toast";
 import {type Cell, type Chessboard, type Color, type Move, type Piece, positionToString} from "../models/chess.ts";
 import {useMatchStore} from "../stores/matchStore";
 import ConfirmModal from "../components/ConfirmModal.vue";
 import router from "../router";
 import {getUser, getUserWithUsername, type User} from "../services/authService.ts";
+import Chat from "../components/Chat.vue";
+import {useClock} from "../composables/useClock.ts";
+import {useDraw} from "../composables/useDraw.ts";
+import DrawButtons from "../components/DrawButtons.vue";
 
 // ----- Routing / IDs
 const route = useRoute();
@@ -189,10 +158,14 @@ const ws = useWs();
 const matchStore = useMatchStore();
 const match = ref(matchStore.current);
 
+const thisPlayer = ref<Color>("WHITE");
+
 const turn = ref<Color>("WHITE");
 const moves = ref<any[]>([]);
 const players = ref<Map<Color, User>>(new Map());
-const times = reactive(new Map<Color, number>()) as unknown as Map<Color, number>;
+
+const draw = useDraw(gameId, turn, thisPlayer);
+
 
 // ----- helpers
 function keyOf(x: number, y: number): string { return `${x}:${y}`; }
@@ -206,7 +179,7 @@ function cellAt(x: number, y: number): Cell {
 }
 
 
-const end = reactive<{ open: boolean; winner: Color | null; endFlag: string }>({
+const end = ref<{ open: boolean; winner: Color | null; endFlag: string }>({
   open: false,
   winner: null,
   endFlag: "",
@@ -310,59 +283,13 @@ async function onCellClick(cell: Cell) {
 
 
 // ===============================
-// Section: Clock Functionality
+// Section: Clock Functionality2
 // ===============================
 
-let ticking: boolean = false;
-let lastTimestamp = 0;
-//Request Animation Frame ID
-let rafId = 0;
+const { times, stopClock, syncClockFromWs } = useClock(turn, end);
 
-function startClock() {
-  if (ticking) return;
-  ticking = true;
-  lastTimestamp = performance.now();
-  rafId = requestAnimationFrame(stepClock);
-}
-
-function stopClock() {
-  ticking = false;
-  cancelAnimationFrame(rafId);
-}
-
-function stepClock(ts: number) {
-  const dt = ts - lastTimestamp;
-  lastTimestamp = ts;
-
-  if (turn.value === "WHITE") {
-    const newW = Math.max(0, (times.get('WHITE') ?? 0) - dt);
-    times.set('WHITE', newW);
-  } else {
-    const newB = Math.max(0, (times.get('BLACK') ?? 0) - dt);
-    times.set('BLACK', newB);
-  }
-
-  if (ticking && !end.open && (times.get('WHITE') ?? 0) > 0 && (times.get('BLACK') ?? 0) > 0) {
-    rafId = requestAnimationFrame(stepClock);
-  } else {
-  }
-}
-
-function syncClockFromWs(remaining?: Record<string, number>) {
-  stopClock();
-  if (remaining) {
-    const w = (remaining as any).white ?? (remaining as any).WHITE ?? (remaining as any).White;
-    const b = (remaining as any).black ?? (remaining as any).BLACK ?? (remaining as any).Black;
-    if (typeof w === "number") times.set('WHITE', w);
-    if (typeof b === "number") times.set('BLACK', b);
-  }
-  if (!end.open) startClock();
-}
 
 // --------------------------------------------------------------------------------------------
-
-
-function onOfferDraw(){ offerDraw(gameId).catch(()=>{}); }
 
 async function onResign(){
   const ok = await askConfirm({
@@ -385,17 +312,9 @@ async function onResign(){
 // ==============================
 
 const chat = ref<{ id: number; text: string; timeFormatted?: string; color?: Color }[]>([]);
-const chatInput = ref("");
-// scroll container für Chat
-const chatContainer = ref<HTMLElement | null>(null);
 
-function onSendChat(){
-  console.log(match.value)
-  const text = chatInput.value.trim();
-  if (!text) return;
-  console.log("Text: " + text)
-  sendChat(gameId, text).catch(()=>{});
-  chatInput.value = "";
+function onSendChat(text: string) {
+  sendChat(gameId, text).catch(() => {});
 }
 
 function formatTime(ms:number){
@@ -404,57 +323,6 @@ function formatTime(ms:number){
   const ss = (s%60).toString().padStart(2,"0");
   return `${m}:${ss}`;
 }
-
-function formatChatTime(time: any) {
-  if (!time) return "";
-  try {
-    const d = (typeof time === "string" || typeof time === "number") ? new Date(time) : time instanceof Date ? time : new Date(String(time));
-    if (isNaN(d.getTime())) return "";
-    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  } catch {
-    return "";
-  }
-}
-
-function isGrouped(idx: number): boolean {
-  if (idx === 0) return false;
-
-  const cur = chat.value[idx];
-  const prev = chat.value[idx - 1];
-
-  if (!cur || !prev) return false;
-
-  // gleiche Farbe?
-  if (cur.color !== prev.color) return false;
-
-  // optional: innerhalb 2 Minuten -> gruppieren
-  const t1 = cur.timeFormatted;
-  const t2 = prev.timeFormatted;
-
-  if (t1 && t2) {
-    try {
-      const d1 = new Date("1970-01-01T" + t1); // Dummy-Datum mit Uhrzeit
-      const d2 = new Date("1970-01-01T" + t2);
-      const delta = Math.abs(d1.getTime() - d2.getTime());
-      if (delta > 2 * 60 * 1000) return false; // mehr als 2 Minuten Abstand
-    } catch {
-      return false;
-    }
-  }
-  return true;
-}
-
-watch(chat, async () => {
-  await nextTick();
-  try {
-    if (chatContainer.value) {
-      chatContainer.value.scrollTop = chatContainer.value.scrollHeight;
-    }
-  } catch {
-    // ignore scroll errors
-  }
-});
-
 
 // --------------------------------------------------------------------------------------------
 
@@ -485,6 +353,7 @@ async function initialisePlayers() {
 
   const color = match.value?.color;
   if (color == undefined) {throw new Error('Color is undefined');}
+  thisPlayer.value = color;
   const user = await getUser();
   players.value.set(color, user);
   for (const opp of match.value?.opponents) {
@@ -559,6 +428,7 @@ function handleGameEvent(msg:any){
       turn.value = (turn.value === "WHITE") ? "BLACK" : "WHITE";
       syncClockFromWs(msg.details.remainingTime);
       clearHighlights();
+      draw.resetDraw();
       console.log("Moved played")
       break;
     }
@@ -569,40 +439,35 @@ function handleGameEvent(msg:any){
       const timeRaw = details.time;
       const color = details.color;
 
-      const timeFormatted = formatChatTime(timeRaw);
-
       const item = {
         id: Date.now() + Math.floor(Math.random() * 1000),
         text,
-        timeFormatted,
+        timeFormatted: timeRaw,
         color: color,
       };
 
       chat.value.push(item);
-
-      // Auto-scroll to bottom after DOM updated
-      nextTick(() => {
-        try {
-          if (chatContainer.value) {
-            chatContainer.value.scrollTop = chatContainer.value.scrollHeight;
-          }
-        } catch (e) {
-          // ignore scroll errors
-        }
-      });
       break;
     }
     case "GAME_ENDED": {
       const { winner, endFlag } = msg.details || {};
-      end.open = true;
-      end.winner = (winner === "WHITE" || winner === "BLACK") ? winner : null;
-      end.endFlag = typeof endFlag === "string" ? endFlag : "UNSPECIFIED";
+      end.value.open = true;
+      end.value.winner = (winner === "WHITE" || winner === "BLACK") ? winner : null;
+      end.value.endFlag = typeof endFlag === "string" ? endFlag : "UNSPECIFIED";
       stopClock();
       break;
     }
-    case "GAME_OVER": {
-      // payload: { reason: "checkmate"|"resign"|"draw", winner: "WHITE"|"BLACK"|null }
-      toast.info(`Spielende: ${msg.payload.reason}`);
+    case "DRAW_EVENT": {
+      console.log("There is a draw event");
+      console.log("msg: " + msg.toString());
+      console.log("details: " + msg.details.flag.toString());
+
+      if (msg.details.flag == "offer") {
+        draw.drawEvent();
+      }
+      if (msg.details.flag == "decline") {
+        draw.resetDraw();
+      }
       break;
     }
     default:
@@ -617,8 +482,8 @@ function handleGameEvent(msg:any){
 // ===========================
 
 const winnerPlayer: any = computed(() => {
-  if (end.winner === "WHITE") return players.value.get('WHITE');
-  if (end.winner === "BLACK") return players.value.get('BLACK');
+  if (end.value.winner === "WHITE") return players.value.get('WHITE');
+  if (end.value.winner === "BLACK") return players.value.get('BLACK');
   return { name: "—", avatar: "/assets/default-avatar.png" } as any;
 });
 
@@ -644,11 +509,11 @@ function endText(flag: string, winner: Color | null): EndUi {
   }
 }
 
-const endUi = computed(() => endText(end.endFlag, end.winner));
+const endUi = computed(() => endText(end.value.endFlag, end.value.winner));
 
 function onRematch(){
   // TODO: hier API-Call für Revanche o. Route wechseln
-  end.open = false;
+  end.value.open = false;
 }
 function onBack(){
   router.push('/lobby');
@@ -812,15 +677,6 @@ function getAvatar(user: User): string {
 .mini-name { font-size:.9rem; opacity:.9; }
 .draw-center { font-weight:800; font-size:1.25rem; opacity:.9; }
 
-.chat-line {
-  margin-bottom: 6px;
-  display: block;
-  line-height: 1.2;
-  padding: 2px 6px;
-  border-radius: 6px;
-}
-.chat-line.is-white { background: rgba(255,255,255,0.06); color: #000; }
-.chat-line.is-black { background: rgba(0,0,0,0.12); color: #fff; }
 
 .input-group {
   display: flex;
@@ -837,70 +693,5 @@ function getAvatar(user: User): string {
   display: flex;
   justify-content: flex-end;
 }
-
-/* Chat layout */
-.chat { height: 80vh; display: flex; flex-direction: column; }
-.chat-messages { flex: 1; overflow-y: auto; padding: 6px; scroll-behavior: smooth; }
-
-/* eine Nachricht (Block) */
-.chat-line {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin-bottom: 8px;
-  max-width: 100%;
-}
-
-/* Wenn grouped: weniger Abstand und keine meta-line */
-.chat-line.grouped { margin-top: -6px; margin-bottom: 6px; }
-
-/* Meta: Name + Zeit */
-.chat-meta { display: flex; gap: 8px; align-items: center; color: var(--muted); }
-.chat-name { font-weight: 600; }
-.chat-time { color: var(--muted); font-size: 0.72rem; margin-left: 10px; }
-
-/* Bubble */
-.chat-bubble {
-  padding: 8px 10px;
-  border-radius: 10px;
-  max-width: 100%;
-  white-space: pre-wrap;            /* behalte newline im text */
-  overflow-wrap: anywhere;         /* zwingt langes Wort zum umbrechen (beste Kompatibilität) */
-  word-break: break-word;          /* fallback */
-  line-height: 1.3;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.25);
-  font-size: 0.95rem;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-.chat-text {
-  flex: 1;
-}
-
-/* Farben pro Spieler (verwende Klassen is-white / is-black durch m.color) */
-/* Passe die alpha-Werte nach Geschmack an, wichtig ist Kontrast! */
-.chat-line.is-white .chat-bubble {
-  background: rgba(255,255,255,0.08);
-  color: #0b0b0b; /* dunkles text für helle bubble */
-}
-.chat-line.is-black .chat-bubble {
-  background: rgba(255,255,255,0.03);
-  color: var(--text); /* hellen text */
-}
-
-.chat-line.is-white .chat-bubble::before { background: rgba(255,255,255,0.22); }
-.chat-line.is-black .chat-bubble::before { background: rgba(0,0,0,0.4); }
-
-/* Input area */
-.chat-input-row { display: flex; flex-direction: column; }
-.chat-input { resize: none; min-height: 42px; max-height: 140px; }
-
-/* Mobil: weniger Höhe falls nötig */
-@media (max-width: 1199px) {
-  .chat { height: auto; } /* erlaubt natürliche Größe auf kleinen Bildschirmen (chat unter dem board) */
-}
-
-
 
 </style>

@@ -38,14 +38,35 @@ public interface GameSessionService {
     /**
      * Resigns at given game
      *
-     * @param gameId to surrender by
+     * @param gameId id of the game
      */
     void resign(long gameId);
 
     /**
+     * Offers a draw to the other player
+     *
+     * @param gameId id of the game
+     */
+    void offerDraw(long gameId);
+
+    /**
+     * Accepts a draw offer of another player
+     *
+     * @param gameId id of the game
+     */
+    void acceptDraw(long gameId);
+
+    /**
+     * Declines a draw offer of another player
+     *
+     * @param gameId id of the game
+     */
+    void declineDraw(long gameId);
+
+    /**
      * Sends a chat message on given game
      *
-     * @param gameId of the game
+     * @param gameId id of the game
      * @param msg to send
      */
     void msg(long gameId, String msg);

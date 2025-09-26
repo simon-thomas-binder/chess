@@ -13,7 +13,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-public class WsServiceImpl implements WsService{
+public class WsServiceImpl implements WsService {
 
     private final SimpMessagingTemplate ws;
     private final long gameId;
@@ -35,19 +35,19 @@ public class WsServiceImpl implements WsService{
         for (Player player : players) {
             Map<String, Object> details = Map.of(
                     "gameId", gameId,
-                    "color", player.getColor(),
+                    "color", player.color(),
                     "opponents", players.stream()
                             .filter(entry -> !entry.equals(player))
-                            .map(entry -> Map.of("username", entry.getUsername(), "color", entry.getColor()))
+                            .map(entry -> Map.of("username", entry.username(), "color", entry.color()))
                             .toList(),
                     "chessboard", board
             );
-            sendMessage("user/" + player.getUsername(), details, WsTypes.MATCH_FOUND);
+            sendMessage("user/" + player.username(), details, WsTypes.MATCH_FOUND);
         }
     }
 
     @Override
-    public void sendMoveApplied(MoveDto move, Color turn, List<Player> players, GameStatus status) {
+    public void sendMoveApplied(MoveDto move, Color turn, Map<Color, Long> times, GameStatus status) {
         Map<String, Object> details = new HashMap<>();
 
         Map<String, Object> moveDetails = new HashMap<>();
@@ -60,8 +60,8 @@ public class WsServiceImpl implements WsService{
         details.put("move", moveDetails);
         details.put("currentTurn", turn);
         Map<String, Long> remainingTime = new HashMap<>();
-        for (Player p : players) {
-            remainingTime.put(p.getColor().toString(), p.getRemainingTime());
+        for (Color c : times.keySet()) {
+            remainingTime.put(c.toString(), times.get(c));
         }
         details.put("remainingTime", remainingTime);
         details.put("status", status);
@@ -84,5 +84,12 @@ public class WsServiceImpl implements WsService{
         details.put("msg", msg);
         details.put("time", time);
         sendMessage("game/" + gameId, details, WsTypes.CHAT);
+    }
+
+    @Override
+    public void sendDrawEvent(String details) {
+        Map<String, Object> d = new HashMap<>();
+        d.put("flag", details);
+        sendMessage("game/" + gameId, d, WsTypes.DRAW_EVENT);
     }
 }

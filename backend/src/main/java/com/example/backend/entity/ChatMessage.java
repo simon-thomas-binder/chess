@@ -44,6 +44,16 @@ public class ChatMessage {
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
+    public ChatMessage(String message, Color sender, Game game) {
+        this.message = message;
+        this.sender = sender;
+        this.game = game;
+    }
+
+    public ChatMessage() {
+
+    }
+
     public ChatDetailDto getChatDetail() {
         return new ChatDetailDto(message, sender, createdAt);
     }
