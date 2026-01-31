@@ -396,11 +396,18 @@ function handleGameEvent(msg:any){
       }
 
       const color: Color = piece.color;
-      let y: number;
+      let y, offset: number;
       if (color == "WHITE") {
         y = 0;
+        offset = 1;
       } else {
         y = board.height - 1;
+        offset = -1;
+      }
+
+      if (move.flag == 'EN_PASSANT') {
+        console.log("Cell at: " + move.to.x.toString() + "" + (move.to.y - offset).toString());
+        cellAt(move.to.x, move.to.y - offset).piece = null;
       }
 
       if (move.flag == 'CASTLE_KING') {

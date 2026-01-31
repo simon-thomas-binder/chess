@@ -39,7 +39,8 @@ public class King extends Piece {
         }
 
         // Queen-side castle
-        if (!board.getPiece(new PositionDto(0, this.getPosition().y())).hasMoved &&
+        if (board.getPiece(new PositionDto(0, this.getPosition().y())) != null &&
+                !board.getPiece(new PositionDto(0, this.getPosition().y())).hasMoved &&
                 board.getPiece(new PositionDto(1, this.position.y())) == null &&
                 board.getPiece(new PositionDto(2, this.position.y())) == null &&
                 board.getPiece(new PositionDto(3, this.position.y())) == null &&
@@ -50,7 +51,8 @@ public class King extends Piece {
         }
 
         // King-side castle
-        if (!board.getPiece(new PositionDto(board.width() - 1, this.getPosition().y())).hasMoved &&
+        if (board.getPiece(new PositionDto(board.width() - 1, this.getPosition().y())) != null &&
+                !board.getPiece(new PositionDto(board.width() - 1, this.getPosition().y())).hasMoved &&
                 board.getPiece(new PositionDto(board.width() - 2, this.position.y())) == null &&
                 board.getPiece(new PositionDto(board.width() - 3, this.position.y())) == null &&
                 !board.isUnderAttack(new PositionDto(board.width() - 3, this.position.y()), opponent)
