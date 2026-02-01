@@ -74,7 +74,7 @@ public abstract class Piece {
         List<MoveDto> validMoves = new ArrayList<>();
         for (MoveDto move : moves) {
             Chessboard futureBoard = board.clone();
-            futureBoard.move(move);
+            futureBoard = futureBoard.move(move);
             if (!futureBoard.isInCheck(color)) {
                 validMoves.add(move);
             }

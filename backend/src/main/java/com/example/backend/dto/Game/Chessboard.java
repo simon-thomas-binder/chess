@@ -1,5 +1,6 @@
 package com.example.backend.dto.Game;
 
+import com.example.backend.dto.Game.piece.Pawn;
 import com.example.backend.dto.Game.piece.Piece;
 import com.example.backend.enums.Color;
 import com.example.backend.enums.MoveFlag;
@@ -20,23 +21,40 @@ import java.util.List;
  * @param delay
  * @param pieces List of pieces on the board
  */
-public record Chessboard(@Min(3) @Max(64) int width, @Min(3) @Max(64) int height, @Min(1) int initial_time, int increment, int delay, List<Piece> pieces) {
+public record Chessboard(@Min(3) @Max(64) int width, @Min(3) @Max(64) int height, @Min(1) int initial_time, int increment, int delay, List<Piece> pieces, PositionDto enPassantTarget) {
 
     /**
      * Moves a piece of this board
      *
      * @param moveDto move data
      */
-    public void move(MoveDto moveDto) {
-        if (moveDto.flag() == MoveFlag.CAPTURE) {
-            pieces.removeIf(piece -> piece.getPosition().equals(moveDto.to()));
-        }
-        for (Piece piece : pieces) {
-            if (piece.getPosition().equals(moveDto.from())) {
-                piece.setPosition(moveDto.to());
-                piece.massageMove();
+    public Chessboard move(MoveDto moveDto) {
+        Piece thisPiece = pieces.stream().filter(p -> p.getPosition().equals(moveDto.from())).findFirst().orElse(null);
+        if (thisPiece == null) return this;
+
+        // En passant logic
+        PositionDto enPassantTarget = null;
+        if (thisPiece instanceof Pawn) {
+            int dy = moveDto.to().y() - moveDto.from().y();
+            if (Math.abs(dy) == 2) {
+                enPassantTarget = new PositionDto(
+                        moveDto.from().x(),
+                        moveDto.from().y() + (dy / 2)
+                );
             }
         }
+        Chessboard result = this.clone(enPassantTarget);
+
+        if (moveDto.flag() == MoveFlag.CAPTURE) {
+            result.pieces.removeIf(piece -> piece.getPosition().equals(moveDto.to()));
+        }
+        if (moveDto.flag() == MoveFlag.EN_PASSANT) {
+            int offset = thisPiece.getColor() == Color.WHITE ? 1 : -1;
+            result.pieces.removeIf(piece -> piece.getPosition().equals(new PositionDto(moveDto.to().x(), moveDto.to().y() - offset)));
+        }
+        thisPiece.setPosition(moveDto.to());
+        thisPiece.massageMove();
+        return result;
     }
 
     /**
@@ -90,11 +108,15 @@ public record Chessboard(@Min(3) @Max(64) int width, @Min(3) @Max(64) int height
         return moves;
     }
 
+    public Chessboard clone(PositionDto enPassantTarget) {
+        return new Chessboard(width, height, initial_time, increment, delay, pieces, enPassantTarget);
+    }
+
     public Chessboard clone() {
         List<Piece> clonedPieces = new ArrayList<>();
         for (Piece piece : pieces) {
             clonedPieces.add(piece.clone());
         }
-        return new Chessboard(width, height, initial_time, increment, delay, clonedPieces);
+        return new Chessboard(width, height, initial_time, increment, delay, clonedPieces, enPassantTarget);
     }
 }

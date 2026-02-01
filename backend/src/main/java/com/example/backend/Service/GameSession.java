@@ -41,7 +41,7 @@ public class GameSession {
     private final WsService wsService;
 
     private final TimeControl timeControl;
-    private final Chessboard board;
+    private Chessboard board;
     private final List<Player> players = new ArrayList<>();
 
     private Color turn = Color.WHITE;
@@ -120,7 +120,7 @@ public class GameSession {
 
         resetDraw();
 
-        board.move(move);
+        board = board.move(move);
         ply++;
 
         turn = Color.getOtherColor(turn);
