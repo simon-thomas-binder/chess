@@ -128,6 +128,31 @@
           @cancel="onConfirmCancel"
       />
 
+      <!-- Promotion Overlay 2-->
+      <div v-if="promotion.open" class="promotion-overlay" @click.self="promotion.open = false">
+        <div class="promotion-card">
+          <h5 class="mb-3 text-white">Bauer umwandeln</h5>
+          <div class="d-flex gap-3 justify-content-center">
+            <div class="promo-option" @click="onPromotionSelect('QUEEN')">
+              <img :src="`/assets/pieces/${promotion.targetColor.toLowerCase()}_queen.svg`" alt="Queen" />
+            </div>
+
+            <div class="promo-option" @click="onPromotionSelect('ROOK')">
+              <img :src="`/assets/pieces/${promotion.targetColor.toLowerCase()}_rook.svg`" alt="Rook" />
+            </div>
+
+            <div class="promo-option" @click="onPromotionSelect('BISHOP')">
+              <img :src="`/assets/pieces/${promotion.targetColor.toLowerCase()}_bishop.svg`" alt="Bishop" />
+            </div>
+
+            <div class="promo-option" @click="onPromotionSelect('KNIGHT')">
+              <img :src="`/assets/pieces/${promotion.targetColor.toLowerCase()}_knight.svg`" alt="Knight" />
+            </div>
+          </div>
+          <button class="btn btn-sm btn-secondary mt-3" @click="promotion.open = false">Abbrechen</button>
+        </div>
+      </div>
+
     </div>
   </div>
 </template>
@@ -193,7 +218,7 @@ const end = ref<{ open: boolean; winner: Color | null; endFlag: string }>({
 // ===============================
 
 const cells = ref<Cell[]>([]);
-const highlightedMoves = ref<Map<string, Move>>(new Map());
+const highlightedMoves = ref<Map<string, Move[]>>(new Map());
 let board: Chessboard;
 
 function buildCells() {
@@ -235,20 +260,21 @@ async function onCellClick(cell: Cell) {
 
   // Click on highlighted cell
   if (cell.hl) {
-    const move = highlightedMoves.value.get(positionToString({x: cell.x, y: cell.y}));
-    if (!move) {
+    const moves = highlightedMoves.value.get(positionToString({x: cell.x, y: cell.y}));
+    if (!moves || moves.length === 0) {
       clearHighlights();
-      console.error("Error highlighted move does not have a related move object")
       return;
     }
 
-    try {
-      await sendMove(gameId, move);
-      clearHighlights();
-    } catch (e: any) {
-      toast.error(e?.response?.data?.message || "Zug konnte nicht gespielt werden");
+    if (moves.length > 1) {
+      // handel promote
+      promotion.pendingMoves = moves;
+      promotion.targetColor = moves[0].piece.color;
+      promotion.open = true;
+      return;
     }
-    return;
+
+    await executeMove(moves[0]);
   }
 
   // Click on cell with piece
@@ -260,9 +286,14 @@ async function onCellClick(cell: Cell) {
       const availableMoves: Move[] = await getMoves(match.value?.gameId, {x: cell.x, y: cell.y});
 
       if (Array.isArray(availableMoves) && availableMoves.length > 0) {
-        const moveMap = new Map<string, Move>();
+        const moveMap = new Map<string, Move[]>();
         availableMoves.forEach((move) => {
-          moveMap.set(positionToString(move.to), move);
+          const key = positionToString(move.to)
+          if (!moveMap.has(key)) {
+            moveMap.set(key, [move]);
+          } else {
+            moveMap.get(key)?.push(move)
+          }
         });
         highlightedMoves.value = moveMap;
         cells.value.map((c) => {if (highlightedMoves.value.has(positionToString({x: c.x, y: c.y}))) {
@@ -277,6 +308,34 @@ async function onCellClick(cell: Cell) {
 
   // Click empty cell
   clearHighlights();
+}
+
+const promotion = reactive({
+  open: false,
+  pendingMoves: [] as Move[],
+  targetColor: 'WHITE' as Color
+});
+
+function onPromotionSelect(type: string) {
+  const move = promotion.pendingMoves.find(m => m.promotionTo === type);
+  if (move) {
+    executeMove(move);
+  } else {
+    console.error("Kein passender Promotion-Move gefunden für", type);
+    promotion.open = false;
+  }
+}
+
+async function executeMove(move: Move) {
+  try {
+    await sendMove(gameId, move);
+    clearHighlights();
+    promotion.open = false;
+    promotion.pendingMoves = [];
+  } catch (e: any) {
+    toast.error(e?.response?.data?.message || "Zug konnte nicht gespielt werden");
+  }
+  return;
 }
 
 // --------------------------------------------------------------------------------------------
@@ -388,7 +447,12 @@ function handleGameEvent(msg:any){
       const fromCellIndex = cells.value.findIndex(cell => cell.key === keyOf(move.from.x, move.from.y));
       const toCellIndex = cells.value.findIndex(cell => cell.key === keyOf(move.to.x, move.to.y));
 
+      console.log("Piece Type: " + move.piece.type);
       const piece: Piece = {type: move.piece.type, position: {x: move.to.x, y: move.to.y}, color: move.piece.color}
+
+      if (move.promotionTo != undefined) {
+        piece.type = move.promotionTo;
+      }
 
       if (fromCellIndex !== -1 && toCellIndex !== -1) {
         cells.value[fromCellIndex].piece = null;
@@ -699,6 +763,47 @@ function getAvatar(user: User): string {
 .button-container {
   display: flex;
   justify-content: flex-end;
+}
+
+.promotion-overlay {
+  position: absolute; /* Oder fixed, je nach Layout */
+  inset: 0;
+  z-index: 100; /* Muss über den Figuren liegen */
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.5rem; /* Falls es nur über dem Board liegen soll */
+}
+
+.promotion-card {
+  background: #2a2d33;
+  padding: 1.5rem;
+  border-radius: 1rem;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+  text-align: center;
+  border: 1px solid rgba(255,255,255,0.1);
+}
+
+.promo-option {
+  width: 60px;
+  height: 60px;
+  background: rgba(255,255,255,0.05);
+  border-radius: 0.5rem;
+  cursor: pointer;
+  padding: 5px;
+  transition: transform 0.2s, background 0.2s;
+}
+
+.promo-option:hover {
+  background: rgba(255,255,255,0.15);
+  transform: translateY(-5px);
+}
+
+.promo-option img {
+  width: 100%;
+  height: 100%;
 }
 
 </style>

@@ -52,6 +52,11 @@ public record Chessboard(@Min(3) @Max(64) int width, @Min(3) @Max(64) int height
             int offset = thisPiece.getColor() == Color.WHITE ? 1 : -1;
             result.pieces.removeIf(piece -> piece.getPosition().equals(new PositionDto(moveDto.to().x(), moveDto.to().y() - offset)));
         }
+        if (moveDto.flag() == MoveFlag.PROMOTION) {
+            result.pieces.removeIf(piece -> piece.getPosition().equals(moveDto.to()));
+            result.pieces.removeIf(piece -> piece.getPosition().equals(moveDto.from()));
+            result.pieces.add(PieceType.createPiece(moveDto.to(), moveDto.piece().getColor(), moveDto.promotionTo()));
+        }
         thisPiece.setPosition(moveDto.to());
         thisPiece.massageMove();
         return result;

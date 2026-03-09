@@ -50,11 +50,23 @@ public class Pawn extends Piece {
             moves.add(new MoveDto(this.position, board.enPassantTarget(), this, MoveFlag.EN_PASSANT, null));
         }
 
+        // Promotion
+        List<MoveDto> promotionMoves = moves.stream().filter(move -> move.to().y() == (this.color == Color.WHITE ? board.height() - 1 : 0)).toList();
+        moves.removeAll(promotionMoves);
+        promotionMoves = promotionMoves.stream().flatMap(move -> getPromotionMoves(move.from(), move.to()).stream()).toList();
+        moves.addAll(promotionMoves);
+
         return checkMoves(moves, board, validateForCheck);
     }
 
-    private MoveDto newMove(PositionDto to, MoveFlag moveFlag) {
-        return new MoveDto(this.position, to, this, moveFlag, null);
+    private List<MoveDto> getPromotionMoves(PositionDto from, PositionDto to) {
+        List<MoveDto> result = new ArrayList<>();
+        for (PieceType pieceType : PieceType.values()) {
+            if (!pieceType.equals(PieceType.PAWN)) {
+                result.add(new MoveDto(from, to, this, MoveFlag.PROMOTION, pieceType));
+            }
+        }
+        return result;
     }
 
     @Override
